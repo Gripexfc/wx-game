@@ -1,56 +1,72 @@
-// 游戏基础配置
-const GAME_WIDTH = 375;           // 设计宽度（iPhone 6 基准）
-const GAME_HEIGHT = 667;          // 设计高度
-const BOARD_SIZE = 6;             // 棋盘 6×6
-const TILE_SIZE = 50;             // 碎片单元格尺寸
-const TILE_GAP = 4;               // 碎片间距
+// 游戏常量配置
 
-// 颜色配置（符合设计文档暖黄、浅绿、淡蓝）
+// 噜噜成长阶段
+const LULU_STAGES = {
+  BABY: { id: 'baby', name: '幼崽噜噜', level: [1, 5] },
+  CHILD: { id: 'child', name: '少年噜噜', level: [6, 10] },
+  YOUTH: { id: 'youth', name: '青年噜噜', level: [11, 15] },
+  ADULT: { id: 'adult', name: '成体噜噜', level: [16, 20] },
+};
+
+// 任务配置
+const TASKS = {
+  FITNESS: { id: 'fitness', name: '健身', icon: '🏃', xp: 20, desc: '完成30分钟运动' },
+  EAT: { id: 'eat', name: '吃饭', icon: '🍽️', xp: 15, desc: '记录正餐' },
+  READ: { id: 'read', name: '阅读', icon: '📚', xp: 20, desc: '阅读30分钟' },
+  SLEEP: { id: 'sleep', name: '睡眠', icon: '😴', xp: 25, desc: '早睡打卡(22:00前)' },
+};
+
+// 升级所需 XP（Lv N → Lv N+1）
+const XP_PER_LEVEL = [100, 150, 200, 250, 300, 350, 400, 450, 500];
+
+// 颜色配置
 const COLORS = {
-  PRIMARY: '#F5B041',      // 暖阳黄
-  SECONDARY: '#7DCEA0',    // 希望绿
-  ACCENT: '#85C1E9',       // 温暖蓝
-  CORAL: '#F0A500',        // 达成橙
-  BG_START: '#FFF9E6',     // 背景渐变起点
-  BG_END: '#FFFFFF',       // 背景渐变终点
-  TEXT_PRIMARY: '#5D4E37', // 文字主色
-  TEXT_SECONDARY: '#8B7355', // 文字辅色
+  PRIMARY: '#8B7355',    // 水豚棕
+  SECONDARY: '#7DCEA0',  // 草地绿
+  ACCENT: '#F5B041',     // 阳光黄
+  BG_START: '#FFF9E6',   // 背景渐变
+  BG_END: '#FFFFFF',
+  TEXT_PRIMARY: '#5D4E37',
+  TEXT_SECONDARY: '#8B7355',
+  SUCCESS: '#E67E22',
 };
 
-// 碎片类型（5种时光碎片）
-const TILE_TYPES = {
-  GREEN: { id: 'green', name: '幼年·求知绿', color: '#7DCEA0' },
-  ORANGE: { id: 'orange', name: '少年·活力橙', color: '#F5B041' },
-  BLUE: { id: 'blue', name: '青年·奋斗蓝', color: '#85C1E9' },
-  PINK: { id: 'pink', name: '中年·温情粉', color: '#F5B8C5' },
-  GOLD: { id: 'gold', name: '成就·圆梦金', color: '#FFD700' },
+// 配饰类型
+const ACCESSORY_TYPES = {
+  HAT: { id: 'hat', name: '帽子' },
+  SCARF: { id: 'scarf', name: '围巾' },
+  GLASSES: { id: 'glasses', name: '眼镜' },
+  BAG: { id: 'bag', name: '背包' },
 };
 
-const TILE_TYPE_KEYS = Object.keys(TILE_TYPES);
-
-// 游戏状态
-const GAME_STATE = {
-  BOOT: 'boot',
-  MENU: 'menu',
-  LEVEL_SELECT: 'levelSelect',
-  PLAYING: 'playing',
-  PAUSED: 'paused',
-  RESULT: 'result',
-  GALLERY: 'gallery',
-  REPORT: 'report',
+// 场景类型
+const SCENES = {
+  HOME: { id: 'home', name: '温馨小窝', unlockLevel: 0 },
+  GRASS: { id: 'grass', name: '草地野餐', unlockLevel: 5 },
+  RIVER: { id: 'river', name: '河边泡澡', unlockLevel: 10 },
+  FOREST: { id: 'forest', name: '森林探险', unlockLevel: 15 },
+  BEACH: { id: 'beach', name: '海边日落', unlockLevel: 20 },
 };
 
-// 关卡阶段
-const LEVEL_STAGES = {
-  CHILDHOOD: { id: 'childhood', name: '童年启蒙', levels: [1, 2, 3] },
-  GROWTH: { id: 'growth', name: '成长突破', levels: [4, 5, 6] },
-  WARMTH: { id: 'warmth', name: '温情相守', levels: [7, 8, 9] },
-  FULFILLMENT: { id: 'fulfillment', name: '圆满收获', levels: [10, 11, 12] },
+// 互动动作
+const LULU_ACTIONS = ['摇头', '微笑', '蹭蹭', '蹦跳', '打哈欠'];
+
+// 存储 Key
+const STORAGE_KEYS = {
+  LULU: 'lulu_data',
+  TASKS: 'task_data',
+  STATS: 'stats_data',
+  ACHIEVEMENTS: 'achievement_data',
+  SETTINGS: 'settings_data',
 };
 
 module.exports = {
-  GAME_WIDTH, GAME_HEIGHT,
-  BOARD_SIZE, TILE_SIZE, TILE_GAP,
-  COLORS, TILE_TYPES, TILE_TYPE_KEYS,
-  GAME_STATE, LEVEL_STAGES,
+  LULU_STAGES,
+  TASKS,
+  XP_PER_LEVEL,
+  COLORS,
+  ACCESSORY_TYPES,
+  SCENES,
+  LULU_ACTIONS,
+  STORAGE_KEYS,
 };
