@@ -1,0 +1,10 @@
+{
+  "id": 7,
+  "name": "家的温暖",
+  "stage": "warmth",
+  "targetScore": 4000,
+  "maxMoves": 16,
+  "requiredTypes": ["green", "orange", "blue", "pink", "gold"],
+  "collectFragment": "pink",
+  "description": "家是永远的港湾"
+}

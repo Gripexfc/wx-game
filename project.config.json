@@ -1,0 +1,15 @@
+{
+  "description": "项目配置文件",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": false,
+    "minified": true,
+    "newFeature": true,
+    "enhance": false
+  },
+  "compileType": "game",
+  "libVersion": "latest",
+  "appid": "wxb9bccf507718cc64",
+  "projectname": "lulu-growth"
+}

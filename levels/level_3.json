@@ -1,0 +1,10 @@
+{
+  "id": 3,
+  "name": "童年梦想",
+  "stage": "childhood",
+  "targetScore": 2000,
+  "maxMoves": 18,
+  "requiredTypes": ["green", "orange", "blue"],
+  "collectFragment": "green",
+  "description": "梦想在心中萌芽"
+}

@@ -1,0 +1,10 @@
+{
+  "id": 4,
+  "name": "青春序曲",
+  "stage": "growth",
+  "targetScore": 2500,
+  "maxMoves": 18,
+  "requiredTypes": ["green", "orange", "blue", "pink"],
+  "collectFragment": "orange",
+  "description": "青春正当时"
+}

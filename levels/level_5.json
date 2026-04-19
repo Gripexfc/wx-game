@@ -1,0 +1,10 @@
+{
+  "id": 5,
+  "name": "奋斗之路",
+  "stage": "growth",
+  "targetScore": 3000,
+  "maxMoves": 17,
+  "requiredTypes": ["green", "orange", "blue", "pink"],
+  "collectFragment": "orange",
+  "description": "汗水浇灌梦想"
+}

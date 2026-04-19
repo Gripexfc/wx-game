@@ -1,0 +1,10 @@
+{
+  "id": 6,
+  "name": "突破自我",
+  "stage": "growth",
+  "targetScore": 3500,
+  "maxMoves": 16,
+  "requiredTypes": ["green", "orange", "blue", "pink"],
+  "collectFragment": "orange",
+  "description": "超越昨天的自己"
+}

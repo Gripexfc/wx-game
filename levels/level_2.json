@@ -1,0 +1,10 @@
+{
+  "id": 2,
+  "name": "好奇之心",
+  "stage": "childhood",
+  "targetScore": 1500,
+  "maxMoves": 20,
+  "requiredTypes": ["green", "orange", "blue"],
+  "collectFragment": "green",
+  "description": "对世界充满好奇"
+}

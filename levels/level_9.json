@@ -1,0 +1,10 @@
+{
+  "id": 9,
+  "name": "温情记忆",
+  "stage": "warmth",
+  "targetScore": 5000,
+  "maxMoves": 15,
+  "requiredTypes": ["green", "orange", "blue", "pink", "gold"],
+  "collectFragment": "pink",
+  "description": "温暖留在心底"
+}

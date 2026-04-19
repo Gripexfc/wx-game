@@ -1,0 +1,10 @@
+{
+  "id": 11,
+  "name": "人生巅峰",
+  "stage": "fulfillment",
+  "targetScore": 6000,
+  "maxMoves": 14,
+  "requiredTypes": ["green", "orange", "blue", "pink", "gold"],
+  "collectFragment": "gold",
+  "description": "站在高处看风景"
+}

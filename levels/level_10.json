@@ -1,0 +1,10 @@
+{
+  "id": 10,
+  "name": "收获季节",
+  "stage": "fulfillment",
+  "targetScore": 5500,
+  "maxMoves": 14,
+  "requiredTypes": ["green", "orange", "blue", "pink", "gold"],
+  "collectFragment": "gold",
+  "description": "努力的回报"
+}

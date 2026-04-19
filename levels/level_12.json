@@ -1,0 +1,10 @@
+{
+  "id": 12,
+  "name": "圆满人生",
+  "stage": "fulfillment",
+  "targetScore": 6666,
+  "maxMoves": 13,
+  "requiredTypes": ["green", "orange", "blue", "pink", "gold"],
+  "collectFragment": "gold",
+  "description": "人生圆满，拾光无悔"
+}
