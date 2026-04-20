@@ -123,11 +123,6 @@ class Lulu {
     return 0.88;
   }
 
-  say(text, frames = 110) {
-    this.sayText = text;
-    this.sayTimer = frames;
-  }
-
   onOwnerFinishedTask(taskName) {
     const name = taskName || '任务';
     this.mood = 'happy';
