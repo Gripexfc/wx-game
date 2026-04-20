@@ -229,7 +229,7 @@ class HomePage {
       if (task.isPlaceholder) {
         this.openDailyEditor();
       } else if (!task.completed) {
-        this.game.completeTask(task.id);
+        this.game.completeGoal(task.id);
       }
     }
 
