@@ -21,10 +21,16 @@ function scheduleNextFrame(fn) {
     return wx.requestAnimationFrame(fn);
   }
   if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(fn);
-  return setTimeout(fn, 16);
+  return setTimeout(fn, FRAME_FALLBACK_MS);
 }
 
 const Lulu = require('./Lulu');
+
+// 游戏常量
+const ONLINE_XP_INTERVAL = 60000;    // 在线XP：每分钟+1
+const COOL_ACTION_PROB = 0.3;       // 酷炫动作触发概率30%
+const FRAME_FALLBACK_MS = 16;        // requestAnimationFrame兜底帧时长
+
 const TaskManager = require('./TaskManager');
 const GrowthSystem = require('./GrowthSystem');
 const Storage = require('./Storage');
@@ -54,7 +60,6 @@ class Game {
     this.goalManager.setStorage(this.storage);
     this.wishManager = new WishManager();
     this.wishManager.setStorage(this.storage);
-    this.wishManager.setGoalsRef(this.goalManager.goals);
     this.petStateManager = new PetStateManager();
     this.petStateManager.setStorage(this.storage);
 
@@ -295,6 +300,27 @@ class Game {
       wishReward = this.wishManager.completeWish(wish.id);
     }
 
+    // 目标状态更新（从 WishManager 移入此处）
+    const goal = this.goalManager.getGoalById(wish.goalId);
+    if (goal) {
+      goal.lastDoneAt = this.goalManager.getTodayString();
+      if (goal.type === 'milestone') {
+        goal.currentProgress = Math.min(
+          (goal.currentProgress || 0) + 1,
+          goal.totalProgress
+        );
+        if (goal.currentProgress >= goal.totalProgress) {
+          goal.completed = true;
+        }
+      }
+      if (goal.type === 'oneTime') {
+        goal.completed = true;
+      }
+      if (wishReward) {
+        wishReward.goalCompleted = goal.completed;
+      }
+    }
+
     // XP结算（单次上限30）
     const goal = this.goalManager.getGoalById(goalId);
     const baseXp = goal ? goal.xp : 15;
@@ -324,7 +350,7 @@ class Game {
     this.lulu.onGoalCompleted(goal ? goal.name : '目标');
 
     // 30%概率触发酷炫动作
-    if (Math.random() < 0.3) {
+    if (Math.random() < COOL_ACTION_PROB) {
       const actions = this.lulu.unlockedActions || [];
       if (actions.length > 0) {
         const action = actions[Math.floor(Math.random() * actions.length)];
@@ -354,7 +380,7 @@ class Game {
 
     // 在线计时：每分钟+1 XP
     const now = Date.now();
-    if (this._lastOnlineXPTime && now - this._lastOnlineXPTime >= 60000) {
+    if (this._lastOnlineXPTime && now - this._lastOnlineXPTime >= ONLINE_XP_INTERVAL) {
       const before = this.growth.level;
       this.growth.addXp(1);
       this._onlineXP += 1;

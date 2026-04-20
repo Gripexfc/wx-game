@@ -4,6 +4,10 @@
 const BannerAdManager = require('../ads/BannerAdManager');
 const { canvasRoundRect } = require('../utils/canvas');
 
+// 游戏常量
+const TAP_DISTANCE_THRESHOLD = 16;   // 触摸移动距离阈值
+const TASK_PRESS_SCALE = 0.96;     // 任务卡片按下缩放比例
+
 const UI = {
   // 背景渐变
   bgTop: '#FFF8EE',
@@ -196,7 +200,7 @@ class HomePage {
     } else if (hit.zone === 'task' && hit.task && !hit.task.isPlaceholder) {
       this._touch.mode = 'task';
       this._touch.task = hit.task;
-      this._taskPress = { id: hit.task.id, scale: 0.96 };
+      this._taskPress = { id: hit.task.id, scale: TASK_PRESS_SCALE };
     }
   }
 
@@ -216,7 +220,7 @@ class HomePage {
 
     if (t.mode === 'pet' && this.lulu) {
       this.lulu.endPetDrag();
-      if (!t.petMoved && dist < 16) {
+      if (!t.petMoved && dist < TAP_DISTANCE_THRESHOLD) {
         this.lulu.onTap();
         this.game.onLuluInteraction();
       }

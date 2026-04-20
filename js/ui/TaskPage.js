@@ -1,6 +1,9 @@
 const { COLORS, TASKS } = require('../utils/constants');
 const { canvasRoundRect } = require('../utils/canvas');
 
+// 游戏常量
+const CARD_RADIUS = 12;            // 卡片圆角
+
 class TaskPage {
   constructor(game) {
     this.game = game;
@@ -60,13 +63,13 @@ class TaskPage {
 
     // 背景
     ctx.fillStyle = task.completed ? '#E8F5E9' : '#FFF';
-    canvasRoundRect(ctx, x, y, width, height, 12);
+    canvasRoundRect(ctx, x, y, width, height, CARD_RADIUS);
     ctx.fill();
 
     // 边框
     ctx.strokeStyle = task.completed ? COLORS.SECONDARY : '#E0E0E0';
     ctx.lineWidth = 2;
-    canvasRoundRect(ctx, x, y, width, height, 12);
+    canvasRoundRect(ctx, x, y, width, height, CARD_RADIUS);
     ctx.stroke();
 
     // 图标
@@ -109,7 +112,7 @@ class TaskPage {
     ctx.fillStyle = '#FFF';
     ctx.strokeStyle = COLORS.ACCENT;
     ctx.lineWidth = 2;
-    canvasRoundRect(ctx, x, y, width, height, 12);
+    canvasRoundRect(ctx, x, y, width, height, CARD_RADIUS);
     ctx.fill();
     ctx.stroke();
 
