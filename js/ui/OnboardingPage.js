@@ -37,6 +37,27 @@ class OnboardingPage {
 
     this.game.storage.set('lulu_name', name);
     this.game.onNameSet(name);
+    this._showGoalCreationGuide();
+  }
+
+  _showGoalCreationGuide() {
+    if (typeof wx === 'undefined' || !wx.showActionSheet) return;
+    const recs = this.game.goalManager.getRecommendations();
+    const items = [...recs.map(g => `${g.icon} ${g.name}`), '稍后再说'];
+
+    wx.showActionSheet({
+      itemList: items,
+      success: (res) => {
+        if (res.tapIndex < recs.length) {
+          const selected = recs[res.tapIndex];
+          const created = this.game.goalManager.createGoal(selected);
+          this.game.goalManager.commitGoal(created.id);
+          if (this.lulu) {
+            this.lulu.say('你的第一个目标！噜噜记住了！', 120);
+          }
+        }
+      },
+    });
   }
 
   /** 外部调用：设置输入值（由 main.js 通过 showModal 回调设置） */
