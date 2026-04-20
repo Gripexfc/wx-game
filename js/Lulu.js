@@ -88,21 +88,7 @@ class Lulu {
     }
   }
 
-  /** 获取心情级别人名 */
-  getMoodLevelName() {
-    if (!this._psm) return '开心';
-    return this._psm.getMoodLevel();
-  }
-
-  /** 目标完成时调用（宠物见证） */
-  onGoalCompleted(goalName) {
-    const name = goalName || '目标';
-    this.mood = 'happy';
-    this.moodTimer = 55;
-    this.triggerRewardInteraction(name);
-  }
-
-  say(text, frames = 110) {
+  getStage()
     this.sayText = text;
     this.sayTimer = frames;
   }
@@ -121,14 +107,6 @@ class Lulu {
     if (s === 'youth') return 1.02;
     if (s === 'child') return 0.96;
     return 0.88;
-  }
-
-  onOwnerFinishedTask(taskName) {
-    const name = taskName || '任务';
-    this.mood = 'happy';
-    this.moodTimer = 55;
-    this.adjustMood(8 + Math.floor(Math.random() * 7));
-    this.triggerRewardInteraction(name);
   }
 
   onTap() {
@@ -164,21 +142,6 @@ class Lulu {
     this.autoActionPaused = false;
   }
 
-  triggerRandomAction() {
-    const lines = ['摇头晃脑', '蹭蹭你', '蹦一下', '伸懒腰', '发呆'];
-    const t = pick(lines);
-    this.legacyAction = t;
-    this.legacyActionTimer = 55;
-    if (t === '伸懒腰') {
-      this.mood = 'sleepy';
-      this.moodTimer = 60;
-      this.say(pick(DIALOGUE.sleepy), 90);
-    } else {
-      this.say(pick(DIALOGUE.happy), 80);
-      this.hopVy = -5;
-    }
-  }
-
   getMoodValue() {
     return Math.max(0, Math.min(100, Math.round(this.moodValue)));
   }
@@ -193,46 +156,6 @@ class Lulu {
 
   adjustMood(delta) {
     this.moodValue = Math.max(0, Math.min(100, this.moodValue + delta));
-  }
-
-  getUnlockedActions() {
-    const pool = [];
-    INTERACTIONS_BY_LEVEL.forEach((bucket) => {
-      if (this.level >= bucket.minLevel) {
-        pool.push(...bucket.actions);
-      }
-    });
-    return pool.length ? pool : ['点点头'];
-  }
-
-  triggerRewardInteraction(taskName) {
-    const baseChance = 0.6;
-    const moodBonus = this.getMoodValue() >= 80 ? 0.2 : 0;
-    const mustTrigger = this.taskNoReactionStreak >= 2;
-    const canTrigger = mustTrigger || Math.random() < (baseChance + moodBonus);
-
-    if (!canTrigger && this.interactionCooldown <= 0) {
-      this.taskNoReactionStreak += 1;
-      this.say(`「${taskName}」完成啦，我记在小本本里了`, 120);
-      return;
-    }
-
-    this.taskNoReactionStreak = 0;
-    this.interactionCooldown = 180;
-    this.todayInteractionCount += 1;
-
-    const action = pick(this.getUnlockedActions());
-    const praise = pick(TASK_PRAISE);
-    this.legacyAction = action;
-    this.legacyActionTimer = 65;
-
-    if (action.includes('跳') || action.includes('转圈')) {
-      this.hopVy = -6.3;
-    } else if (action.includes('蹦')) {
-      this.hopVy = -5.2;
-    }
-
-    this.say(`「${taskName}」完成！${praise}`, 150);
   }
 
   getActionText() {
@@ -781,16 +704,6 @@ class Lulu {
     }
     if (cur) out.push(cur);
     return out.length ? out : [text];
-  }
-
-  // ========== 心情级外观变化 ==========
-
-  /** 根据心情值对颜色做饱和度调整 */
-  _applyMoodSaturation(ctx, colorMult) {
-    if (colorMult === 1.0) return;
-    if (colorMult < 1.0) {
-      ctx.globalAlpha = colorMult;
-    }
   }
 
   // ========== 酷炫动作 ==========
