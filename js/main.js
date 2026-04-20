@@ -322,7 +322,6 @@ class Game {
     }
 
     // XP结算（单次上限30）
-    const goal = this.goalManager.getGoalById(goalId);
     const baseXp = goal ? goal.xp : 15;
     const moodMult = this.petStateManager.getMoodXPMultiplier();
     const xp = Math.min(30, Math.round((baseXp + (wishReward ? 5 : 0)) * moodMult));
