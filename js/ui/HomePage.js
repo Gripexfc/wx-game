@@ -43,11 +43,33 @@ class HomePage {
     this.game = game;
     this.lulu = null;
     this._hits = { lulu: null, tasks: [] };
-    /** @type {{ mode: 'pet'|'task'|null, lastX: number, lastY: number, startX: number, startY: number, petMoved: boolean, task: object|null }} */
     this._touch = { mode: null, lastX: 0, lastY: 0, startX: 0, startY: 0, petMoved: false, task: null };
-    /** 任务行按压缩放 */
     this._taskPress = null;
     this._banner = BannerAdManager.getInstance();
+
+    // 新增：承诺槽位（4格）
+    this._commitmentSlots = [];
+    // 新增：系统引用（由 main.js 注入）
+    this._goalManager = null;
+    this._wishManager = null;
+    this._petStateManager = null;
+    this._growth = null;
+    this._onCompleteGoal = null;
+    this._onCommitGoal = null;
+    this._onCreateGoal = null;
+    // 新增：在线XP计时
+    this._onlineXP = 0;
+    this._lastOnlineXPTime = Date.now();
+  }
+
+  setGameSystems({ goalManager, wishManager, petStateManager, growth, onCompleteGoal, onCommitGoal, onCreateGoal }) {
+    this._goalManager = goalManager;
+    this._wishManager = wishManager;
+    this._petStateManager = petStateManager;
+    this._growth = growth;
+    this._onCompleteGoal = onCompleteGoal;
+    this._onCommitGoal = onCommitGoal;
+    this._onCreateGoal = onCreateGoal;
   }
 
   setLulu(lulu) {
@@ -133,7 +155,18 @@ class HomePage {
       return { zone: 'pet', layout: L };
     }
 
-    // Task grid (2x2)
+    // 承诺槽位检测
+    if (this._commitmentSlots && this._commitmentSlots.length > 0) {
+      for (let i = 0; i < this._commitmentSlots.length; i++) {
+        const slot = this._commitmentSlots[i];
+        if (x >= slot.x && x <= slot.x + slot.w && y >= slot.y && y <= slot.y + slot.h) {
+          const commitments = this._goalManager ? this._goalManager.getTodayCommitments() : [];
+          return { zone: 'commitment', index: i, commit: commitments[i], layout: L };
+        }
+      }
+    }
+
+    // Task grid (legacy, 兼容旧逻辑)
     for (let i = 0; i < L.displayTasks.length; i++) {
       const col = i % 2;
       const row = Math.floor(i / 2);
@@ -150,20 +183,16 @@ class HomePage {
 
   onTouchStart(x, y, canvasWidth, canvasHeight) {
     const hit = this.hitTest(x, y, canvasWidth, canvasHeight);
-    this._touch = {
-      mode: null,
-      lastX: x,
-      lastY: y,
-      startX: x,
-      startY: y,
-      petMoved: false,
-      task: null,
-    };
+    this._touch = { mode: null, lastX: x, lastY: y, startX: x, startY: y, petMoved: false, task: null };
 
     if (hit.zone === 'pet' && this.lulu) {
       this._touch.mode = 'pet';
       this.lulu.beginPetDrag();
-    } else if (hit.zone === 'task') {
+    } else if (hit.zone === 'commitment') {
+      this._touch.mode = 'commitment';
+      this._touch.commit = hit.commit;
+      this._touch.commitIndex = hit.index;
+    } else if (hit.zone === 'task' && hit.task && !hit.task.isPlaceholder) {
       this._touch.mode = 'task';
       this._touch.task = hit.task;
       this._taskPress = { id: hit.task.id, scale: 0.96 };
@@ -190,6 +219,10 @@ class HomePage {
         this.lulu.onTap();
         this.game.onLuluInteraction();
       }
+    } else if (t.mode === 'commitment') {
+      if (dist < 18 && this._onCompleteGoal && t.commit && !t.commit.completed) {
+        this._onCompleteGoal(t.commit.goalId);
+      }
     } else if (t.mode === 'task' && t.task && dist < 18) {
       const task = t.task;
       if (task.isPlaceholder) {
@@ -201,6 +234,7 @@ class HomePage {
 
     this._touch.mode = null;
     this._touch.task = null;
+    this._touch.commit = null;
   }
 
   onTouchCancel() {
@@ -209,6 +243,7 @@ class HomePage {
     }
     this._touch.mode = null;
     this._touch.task = null;
+    this._touch.commit = null;
   }
 
   openDailyEditor() {
@@ -462,21 +497,117 @@ class HomePage {
     ctx.textAlign = 'center';
     ctx.fillText(`${growth.xp} / ${growth.getXpForNextLevel()} XP`, canvasWidth / 2, L.xpBarY + 16);
 
-    // ===== 今日任务标签 =====
+    // ===== 今日承诺标签 =====
     ctx.fillStyle = UI.textMuted;
     ctx.font = '600 12px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('今日任务', pad, L.taskGridY - 8);
+    ctx.fillText('今日承诺', pad, L.taskGridY - 8);
 
-    // ===== 任务网格（2x2） =====
-    L.displayTasks.forEach((task, i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const tx = pad + col * (L.taskCardW + L.taskGap);
-      const ty = L.taskGridY + row * (L.taskCardH + L.taskGap);
-      this.drawTaskCard(ctx, tx, ty, L.taskCardW, L.taskCardH, task);
+    // ===== 承诺槽位（4格）=====
+    this._commitmentSlots = [
+      { x: pad, y: L.taskGridY, w: L.taskCardW, h: L.taskCardH },
+      { x: pad + L.taskCardW + L.taskGap, y: L.taskGridY, w: L.taskCardW, h: L.taskCardH },
+      { x: pad, y: L.taskGridY + L.taskCardH + L.taskGap, w: L.taskCardW, h: L.taskCardH },
+      { x: pad + L.taskCardW + L.taskGap, y: L.taskGridY + L.taskCardH + L.taskGap, w: L.taskCardW, h: L.taskCardH },
+    ];
+    const commitments = this._goalManager ? this._goalManager.getTodayCommitments() : [];
+    this._commitmentSlots.forEach((slot, i) => {
+      const commit = commitments[i];
+      if (commit) {
+        this._drawCommitmentCard(ctx, slot, commit);
+      } else {
+        this._drawEmptySlot(ctx, slot, i);
+      }
     });
+
+    // ===== 心愿气泡 =====
+    const wishes = this._wishManager ? this._wishManager.getTodayWishes() : [];
+    if (wishes.length > 0) {
+      this._drawWishBubbles(ctx, L);
+    }
+
+    // ===== 在线XP小标签 =====
+    if (this._onlineXP > 0) {
+      ctx.fillStyle = 'rgba(255,179,71,0.15)';
+      ctx.beginPath();
+      ctx.roundRect(canvasWidth - pad - 80, canvasHeight - 30, 80, 22, 11);
+      ctx.fill();
+      ctx.fillStyle = '#8B4500';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`在线 +${this._onlineXP} XP`, canvasWidth - pad - 40, canvasHeight - 16);
+    }
     this._banner.show();
+  }
+
+  _drawCommitmentCard(ctx, slot, commit) {
+    const goal = commit.goal;
+    const isDone = commit.completed;
+    ctx.save();
+    ctx.fillStyle = isDone ? 'rgba(143,214,163,0.2)' : UI.card;
+    this.roundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
+    ctx.fill();
+    ctx.strokeStyle = isDone ? 'rgba(143,214,163,0.5)' : UI.cardBorder;
+    ctx.lineWidth = 1.5;
+    this.roundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
+    ctx.stroke();
+
+    const cx = slot.x + slot.w / 2;
+    ctx.font = '22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(goal.icon || '🎯', cx, slot.y + 30);
+
+    ctx.fillStyle = isDone ? UI.textMuted : UI.text;
+    ctx.font = '600 13px sans-serif';
+    const name = goal.name.length > 9 ? `${goal.name.slice(0, 8)}…` : goal.name;
+    ctx.fillText(name, cx, slot.y + 50);
+
+    ctx.fillStyle = isDone ? UI.completed : UI.accent;
+    ctx.font = '600 11px sans-serif';
+    ctx.fillText(isDone ? '✓ 已完成' : `+${goal.xp} XP`, cx, slot.y + 68);
+
+    ctx.restore();
+  }
+
+  _drawEmptySlot(ctx, slot, index) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(245,176,65,0.08)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    this.roundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(245,176,65,0.3)';
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#8B7355';
+    ctx.textAlign = 'center';
+    ctx.fillText('+ 添加目标', slot.x + slot.w / 2, slot.y + slot.h / 2 + 4);
+    ctx.restore();
+  }
+
+  _drawWishBubbles(ctx, L) {
+    const wishes = this._wishManager.getTodayWishes();
+    const petCenter = { x: L.petCardX + L.petCardW / 2, y: L.petCardY + L.petCardH / 2 };
+    wishes.forEach((wish, i) => {
+      const angle = (i / Math.max(wishes.length, 1)) * Math.PI * 2 - Math.PI / 2;
+      const radius = 130;
+      const bx = petCenter.x + Math.cos(angle) * radius;
+      const by = petCenter.y + Math.sin(angle) * radius;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.shadowColor = 'rgba(0,0,0,0.08)';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.ellipse(bx, by, 70, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.font = '11px sans-serif';
+      ctx.fillStyle = '#5D4E37';
+      ctx.textAlign = 'center';
+      ctx.fillText(wish.wishText.slice(0, 12), bx, by + 4);
+      ctx.restore();
+    });
   }
 
   drawTaskCard(ctx, x, y, w, h, task) {
