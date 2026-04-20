@@ -31,13 +31,6 @@ const COLORS = {
   SUCCESS: '#E67E22',
 };
 
-// 配饰类型
-const ACCESSORY_TYPES = {
-  HAT: { id: 'hat', name: '帽子' },
-  SCARF: { id: 'scarf', name: '围巾' },
-  GLASSES: { id: 'glasses', name: '眼镜' },
-  BAG: { id: 'bag', name: '背包' },
-};
 
 // 场景类型
 const SCENES = {
@@ -48,8 +41,6 @@ const SCENES = {
   BEACH: { id: 'beach', name: '海边日落', unlockLevel: 20 },
 };
 
-// 互动动作
-const LULU_ACTIONS = ['摇头', '微笑', '蹭蹭', '蹦跳', '打哈欠'];
 
 // 存储 Key
 const STORAGE_KEYS = {
@@ -192,26 +183,17 @@ const LULU_DIALOGUES = {
   cheer: ['陪你在线！加油哦~', '加油加油！我陪着你！'],
 };
 
-// 存储Key（新版）
-const STORAGE_KEYS_V2 = {
-  GOALS: 'goal_data',
-  WISHES: 'wish_data',
-  PET_STATE: 'pet_state_data',
-};
 
 module.exports = {
   LULU_STAGES,
   TASKS,
   XP_PER_LEVEL,
   COLORS,
-  ACCESSORY_TYPES,
   SCENES,
-  LULU_ACTIONS,
   STORAGE_KEYS,
   RECOMMENDED_GOALS,
   WISH_TEMPLATES,
   MOOD,
   COOL_ACTIONS,
   LULU_DIALOGUES,
-  STORAGE_KEYS_V2,
 };

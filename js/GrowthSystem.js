@@ -1,4 +1,4 @@
-const { XP_PER_LEVEL, LULU_STAGES, SCENES, ACCESSORY_TYPES } = require('../utils/constants');
+const { XP_PER_LEVEL, LULU_STAGES, SCENES } = require('../utils/constants');
 const { getTodayString, getYesterdayString } = require('./utils/date');
 
 class GrowthSystem {
