@@ -69,8 +69,8 @@ class HomePage {
     this._petStateManager = petStateManager;
     this._growth = growth;
     this._onCompleteGoal = onCompleteGoal;
-    this._onCommitGoal = onCommitGoal;
-    this._onCreateGoal = onCreateGoal;
+    this._onCommitGoal = null;
+    this._onCreateGoal = null;
   }
 
   setLulu(lulu) {
@@ -609,67 +609,6 @@ class HomePage {
       ctx.fillText(wish.wishText.slice(0, 12), bx, by + 4);
       ctx.restore();
     });
-  }
-
-  drawTaskCard(ctx, x, y, w, h, task) {
-    this._hits.tasks.push({ x, y, w, h, task });
-
-    const press = this._taskPress && this._taskPress.id === task.id ? this._taskPress.scale : 1;
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(press, press);
-    ctx.translate(-cx, -cy);
-
-    // 卡片背景
-    ctx.fillStyle = task.completed ? 'rgba(255,255,255,0.7)' : UI.card;
-    canvasRoundRect(ctx, x, y, w, h, 14);
-    ctx.fill();
-    ctx.strokeStyle = task.completed ? 'rgba(143, 214, 163, 0.4)' : UI.cardBorder;
-    ctx.lineWidth = 1.5;
-    canvasRoundRect(ctx, x, y, w, h, 14);
-    ctx.stroke();
-
-    // 自定义任务：淡绿底色
-    if (task.isPlaceholder && !task.completed) {
-      ctx.fillStyle = 'rgba(143, 214, 163, 0.12)';
-      canvasRoundRect(ctx, x + 1, y + 1, w - 2, h - 2, 13);
-      ctx.fill();
-    }
-
-    const cx2 = x + w / 2;
-
-    // 任务图标
-    ctx.font = '24px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(task.icon, cx2, y + 34);
-
-    // 任务名称
-    ctx.textAlign = 'center';
-    ctx.fillStyle = task.completed ? UI.textMuted : UI.text;
-    ctx.font = '600 14px sans-serif';
-    const name = task.name.length > 10 ? `${task.name.slice(0, 9)}…` : task.name;
-    ctx.fillText(name, cx2, y + 56);
-
-    // 任务描述
-    ctx.font = '10px sans-serif';
-    ctx.fillStyle = UI.textMuted;
-    const desc = task.desc && task.desc.length > 16 ? `${task.desc.slice(0, 15)}…` : (task.desc || '');
-    ctx.fillText(desc, cx2, y + 72);
-
-    // 奖励/状态
-    ctx.textAlign = 'center';
-    ctx.font = '600 12px sans-serif';
-    if (task.isPlaceholder && !task.completed) {
-      ctx.fillStyle = UI.accent;
-      ctx.fillText('点击编辑', cx2, y + h - 12);
-    } else {
-      ctx.fillStyle = task.completed ? UI.completed : UI.accent;
-      ctx.fillText(task.completed ? '✓ 已完成' : `+${task.xp} XP`, cx2, y + h - 12);
-    }
-
-    ctx.restore();
   }
 }
 
