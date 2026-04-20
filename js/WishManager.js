@@ -8,15 +8,10 @@ class WishManager {
     this.yesterdayUnfinished = null;
     this.lastResetDate = null;
     this._storage = null;
-    this._goals = null;
   }
 
   setStorage(storage) {
     this._storage = storage;
-  }
-
-  setGoalsRef(goals) {
-    this._goals = goals;
   }
 
   generateDailyWishes(goals) {
@@ -65,29 +60,12 @@ class WishManager {
     if (!wish || wish.completed) return null;
     wish.completed = true;
 
-    // 更新关联目标
-    const goal = (this._goals || []).find(g => g.id === wish.goalId);
-    if (goal) {
-      goal.lastDoneAt = getTodayString();
-      if (goal.type === 'milestone') {
-        goal.currentProgress = Math.min(
-          (goal.currentProgress || 0) + 1,
-          goal.totalProgress
-        );
-        if (goal.currentProgress >= goal.totalProgress) {
-          goal.completed = true;
-        }
-      }
-      if (goal.type === 'oneTime') {
-        goal.completed = true;
-      }
-    }
-
     return {
       xp: wish.xp + 5,
       moodBoost: 15 + wish.extraMoodBoost,
       loveStar: 1,
-      goalCompleted: goal ? goal.completed : false,
+      goalId: wish.goalId,
+      goalCompleted: false,
     };
   }
 

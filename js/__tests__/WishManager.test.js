@@ -71,17 +71,18 @@ test('completeWish: marks wish done and returns reward', () => {
   expect(reward.loveStar).toBe(1);
 });
 
-test('completeWish: for milestone goal increments progress', () => {
+test('completeWish: for milestone goal returns goalId without modifying goal', () => {
   const wm = createWM();
   const goals = [{
     id: 'g1', name: '跑完10公里', type: 'milestone', xp: 25,
     totalProgress: 10, currentProgress: 0, tag: '运动',
   }];
-  wm.setGoalsRef(goals);
   wm.generateDailyWishes(goals);
   const wish = wm.getTodayWishes()[0];
-  wm.completeWish(wish.id);
-  expect(goals[0].currentProgress).toBe(1);
+  const reward = wm.completeWish(wish.id);
+  expect(wish.completed).toBe(true);
+  expect(reward.goalId).toBe('g1');
+  expect(reward.goalCompleted).toBe(false);
 });
 
 test('getTodayWishes: only returns uncompleted wishes', () => {
