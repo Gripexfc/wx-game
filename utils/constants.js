@@ -137,19 +137,19 @@ const MOOD = {
 // 酷炫动作配置
 const COOL_ACTIONS = {
   normal: [
-    { id: 'heartbeat', name: '心跳突突', cost: 80, threshold: 70 },
-    { id: 'dance', name: '蹦迪摇摆', cost: 80, threshold: 70 },
-    { id: 'backflip', name: '后空翻', cost: 80, threshold: 70 },
-    { id: 'rainbow', name: '彩虹屁', cost: 80, threshold: 70 },
-    { id: 'takeoff', name: '原地起飞', cost: 80, threshold: 70 },
+    { id: 'heartbeat', name: '心跳突突', cost: 80, threshold: 70, duration: 90 },
+    { id: 'dance', name: '蹦迪摇摆', cost: 80, threshold: 70, duration: 120 },
+    { id: 'backflip', name: '后空翻', cost: 80, threshold: 70, duration: 60 },
+    { id: 'rainbow', name: '彩虹屁', cost: 80, threshold: 70, duration: 150 },
+    { id: 'takeoff', name: '原地起飞', cost: 80, threshold: 70, duration: 100 },
   ],
   advanced: [
-    { id: 'supersugar', name: '超级撒糖', cost: 160, threshold: 80 },
-    { id: 'royal', name: '王者降临', cost: 160, threshold: 80 },
-    { id: 'transform', name: '变身觉醒', cost: 160, threshold: 80 },
+    { id: 'supersugar', name: '超级撒糖', cost: 160, threshold: 80, duration: 180 },
+    { id: 'royal', name: '王者降临', cost: 160, threshold: 80, duration: 200 },
+    { id: 'transform', name: '变身觉醒', cost: 160, threshold: 80, duration: 240 },
   ],
   ultimate: [
-    { id: 'universe', name: '宇宙级庆祝', cost: 280, threshold: 90 },
+    { id: 'universe', name: '宇宙级庆祝', cost: 280, threshold: 90, duration: 300 },
   ],
 };
 

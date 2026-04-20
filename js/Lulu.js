@@ -2,7 +2,7 @@
  * 噜噜 · Canvas 伪 3D 虚拟宠物：分层光影、自主行为、点击 / 左右滑翻面、对话气泡
  */
 
-const { LULU_STAGES } = require('../utils/constants');
+const { LULU_STAGES, COOL_ACTIONS } = require('../utils/constants');
 const { canvasRoundRect } = require('../utils/canvas');
 
 const DIALOGUE = {
@@ -712,11 +712,13 @@ class Lulu {
     this._coolActionId = actionId;
     this._coolActionFrame = 0;
     this._coolActionCallback = callback || null;
-    const durations = {
-      heartbeat: 90, dance: 120, backflip: 60, rainbow: 150, takeoff: 100,
-      supersugar: 180, royal: 200, transform: 240, universe: 300,
-    };
-    this._coolActionDuration = durations[actionId] || 120;
+    const allActions = [
+      ...COOL_ACTIONS.normal,
+      ...COOL_ACTIONS.advanced,
+      ...COOL_ACTIONS.ultimate,
+    ];
+    const action = allActions.find(a => a.id === actionId);
+    this._coolActionDuration = action ? action.duration : 120;
   }
 
   _drawCoolAction(ctx, cx, cy, base) {
