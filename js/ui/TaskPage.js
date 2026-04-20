@@ -134,7 +134,7 @@ class TaskPage {
           });
         } else if (!btn.task.completed) {
           // 完成任务
-          this.game.completeTask(btn.task.id);
+          this.game.completeGoal(btn.task.id);
         }
         return true;
       }
@@ -142,7 +142,7 @@ class TaskPage {
 
     // 返回按钮
     if (x < 80 && y < 50) {
-      this.game.showHomePage();
+      this.game.currentPage = 'home';
       return true;
     }
 
