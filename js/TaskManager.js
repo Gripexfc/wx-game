@@ -94,20 +94,6 @@ class TaskManager {
     return this.dailyCustom;
   }
 
-  completeTask(taskId) {
-    if (taskId === PLACEHOLDER_ID) return false;
-    if (this.todayTasks.hasOwnProperty(taskId)) {
-      this.todayTasks[taskId] = true;
-      return true;
-    }
-    if (this.dailyCustom && this.dailyCustom.id === taskId) {
-      if (this.dailyCustom.completed) return false;
-      this.dailyCustom.completed = true;
-      return true;
-    }
-    return false;
-  }
-
   getTodayTasks() {
     const tasks = [];
     Object.values(TASKS).forEach((task) => {
@@ -140,15 +126,6 @@ class TaskManager {
     }
 
     return tasks;
-  }
-
-  getCompletedCount() {
-    let count = 0;
-    Object.values(this.todayTasks).forEach((c) => {
-      if (c) count++;
-    });
-    if (this.dailyCustom && this.dailyCustom.completed) count++;
-    return count;
   }
 
   getTotalXp() {
