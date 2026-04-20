@@ -26,18 +26,31 @@ class GrowthSystem {
     return LULU_STAGES.BABY;
   }
 
-  // 添加 XP
+  // 添加 XP（amount 可为负数，降级时从上一级借经验）
   addXp(amount) {
-    this.xp += amount;
-    this.totalXp += amount;
+    if (amount === 0) return { leveled: false, newLevel: this.level };
 
-    // 检查是否升级
-    while (this.xp >= this.getXpForNextLevel()) {
-      this.xp -= this.getXpForNextLevel();
-      this.levelUp();
+    if (amount > 0) {
+      this.xp += amount;
+      this.totalXp += amount;
+
+      // 检查是否升级
+      while (this.xp >= this.getXpForNextLevel()) {
+        this.xp -= this.getXpForNextLevel();
+        this.levelUp();
+      }
+      return { leveled: this.xp === 0, newLevel: this.level };
     }
 
-    return { leveled: this.xp === 0, newLevel: this.level };
+    // 扣除 XP（可能降级）
+    this.xp += amount; // amount 为负
+    this.totalXp = Math.max(0, this.totalXp + amount);
+    while (this.xp < 0 && this.level > 1) {
+      this.level--;
+      this.xp += this.getXpForNextLevel();
+    }
+    if (this.xp < 0) this.xp = 0;
+    return { leveled: true, newLevel: this.level };
   }
 
   // 升级
