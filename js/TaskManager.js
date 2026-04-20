@@ -1,4 +1,5 @@
 const { TASKS } = require('../utils/constants');
+const { getTodayString } = require('../utils/date');
 
 const PLACEHOLDER_ID = '__daily_placeholder__';
 const DAILY_CUSTOM_ID = 'daily_custom';
@@ -15,11 +16,6 @@ class TaskManager {
     /** 每日仅一条自定义：不修改则跨天沿用文案，仅重置完成态 */
     this.dailyCustom = null;
     this.lastResetDate = null;
-  }
-
-  getTodayString() {
-    const now = new Date();
-    return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
   }
 
   /** 返回任务当前完成状态（内部使用） */
@@ -60,7 +56,7 @@ class TaskManager {
   }
 
   checkDailyReset() {
-    const today = this.getTodayString();
+    const today = getTodayString();
     if (this.lastResetDate !== today) {
       this.resetDaily();
       this.lastResetDate = today;

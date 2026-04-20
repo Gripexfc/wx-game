@@ -1,5 +1,7 @@
 // 宠物情绪状态管理器：心情5级 + 衰减曲线 + 日终结算 + 里程碑检测
 
+const { getTodayString } = require('./utils/date');
+
 class PetStateManager {
   constructor() {
     this.moodValue = 68;
@@ -14,11 +16,6 @@ class PetStateManager {
 
   setStorage(storage) {
     this._storage = storage;
-  }
-
-  getTodayString() {
-    const now = new Date();
-    return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
   }
 
   // 心情级别（5级）
@@ -114,7 +111,7 @@ class PetStateManager {
 
     // 6. 记录入睡心情
     this.petEveningMood = this.moodValue;
-    this.lastSettleDate = this.getTodayString();
+    this.lastSettleDate = getTodayString();
   }
 
   _consecutiveBonus(days) {

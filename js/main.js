@@ -31,6 +31,7 @@ const Storage = require('./Storage');
 const GoalManager = require('./GoalManager');
 const WishManager = require('./WishManager');
 const PetStateManager = require('./PetStateManager');
+const { daysBetween } = require('./utils/date');
 const HomePage = require('./ui/HomePage');
 const OnboardingPage = require('./ui/OnboardingPage');
 
@@ -169,13 +170,6 @@ class Game {
     this.homePage.setLulu(this.lulu);
   }
 
-  _daysBetween(dateA, dateB) {
-    if (!dateA || !dateB) return 0;
-    const a = new Date(dateA);
-    const b = new Date(dateB);
-    return Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
-  }
-
   _getMilestoneDialogue(milestone) {
     const { LULU_DIALOGUES } = require('../utils/constants');
     const templates = LULU_DIALOGUES.milestone[milestone];
@@ -227,7 +221,7 @@ class Game {
     // === 日终结算 ===
     const today = this.goalManager.getTodayString();
     const lastActive = this.goalManager.lastResetDate || today;
-    const disconnectDays = this._daysBetween(lastActive, today);
+    const disconnectDays = daysBetween(lastActive, today);
 
     if (disconnectDays > 0) {
       for (let d = 1; d <= disconnectDays; d++) {

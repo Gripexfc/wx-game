@@ -1,5 +1,6 @@
 // 目标管理器：目标库 + 今日承诺 + 推荐引擎
 const { RECOMMENDED_GOALS } = require('../utils/constants');
+const { getTodayString } = require('./utils/date');
 
 class GoalManager {
   constructor() {
@@ -11,11 +12,6 @@ class GoalManager {
 
   setStorage(storage) {
     this._storage = storage;
-  }
-
-  getTodayString() {
-    const now = new Date();
-    return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
   }
 
   generateId() {
@@ -33,7 +29,7 @@ class GoalManager {
       xp: Math.min(30, Math.max(5, Number(xp) || 15)),
       totalProgress: totalProgress || null,
       currentProgress: 0,
-      createdAt: this.getTodayString(),
+      createdAt: getTodayString(),
       lastDoneAt: null,
       remindCount: 0,
       completed: false,
@@ -94,7 +90,7 @@ class GoalManager {
     commit.completed = true;
     const goal = this.getGoalById(goalId);
     if (goal) {
-      goal.lastDoneAt = this.getTodayString();
+      goal.lastDoneAt = getTodayString();
       if (goal.type === 'milestone') {
         this.updateProgress(goalId, 1);
       }
@@ -111,7 +107,7 @@ class GoalManager {
   }
 
   checkDailyReset() {
-    const today = this.getTodayString();
+    const today = getTodayString();
     if (this.lastResetDate !== today) {
       this.todayCommitments = [];
       this.lastResetDate = today;

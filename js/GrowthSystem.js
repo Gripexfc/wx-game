@@ -1,4 +1,5 @@
 const { XP_PER_LEVEL, LULU_STAGES, SCENES, ACCESSORY_TYPES } = require('../utils/constants');
+const { getTodayString, getYesterdayString } = require('./utils/date');
 
 class GrowthSystem {
   constructor() {
@@ -70,11 +71,11 @@ class GrowthSystem {
   }
 
   checkIn() {
-    const today = this.getTodayString();
+    const today = getTodayString();
     if (this.lastCheckIn === today) {
       return { alreadyCheckedIn: true };
     }
-    const yesterday = this.getYesterdayString();
+    const yesterday = getYesterdayString();
     if (this.lastCheckIn === yesterday) {
       this.consecutiveDays++;
     } else {
@@ -82,17 +83,6 @@ class GrowthSystem {
     }
     this.lastCheckIn = today;
     return { alreadyCheckedIn: false, consecutiveDays: this.consecutiveDays };
-  }
-
-  getTodayString() {
-    const now = new Date();
-    return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-  }
-
-  getYesterdayString() {
-    const now = new Date();
-    now.setDate(now.getDate() - 1);
-    return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
   }
 
   getXpProgress() {

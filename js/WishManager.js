@@ -1,4 +1,5 @@
 // 心愿单管理器：从目标库抽取每日心愿 + 心愿完成奖励
+const { getTodayString } = require('./utils/date');
 const { WISH_TEMPLATES } = require('../utils/constants');
 
 class WishManager {
@@ -16,11 +17,6 @@ class WishManager {
 
   setGoalsRef(goals) {
     this._goals = goals;
-  }
-
-  getTodayString() {
-    const now = new Date();
-    return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
   }
 
   generateDailyWishes(goals) {
@@ -47,7 +43,7 @@ class WishManager {
       extraMoodBoost: 7,
       completed: false,
     }));
-    this.lastResetDate = this.getTodayString();
+    this.lastResetDate = getTodayString();
   }
 
   _buildWishText(goal) {
@@ -72,7 +68,7 @@ class WishManager {
     // 更新关联目标
     const goal = (this._goals || []).find(g => g.id === wish.goalId);
     if (goal) {
-      goal.lastDoneAt = this.getTodayString();
+      goal.lastDoneAt = getTodayString();
       if (goal.type === 'milestone') {
         goal.currentProgress = Math.min(
           (goal.currentProgress || 0) + 1,
@@ -100,7 +96,7 @@ class WishManager {
   }
 
   checkDailyReset() {
-    const today = this.getTodayString();
+    const today = getTodayString();
     if (this.lastResetDate !== today) {
       this.todayWishes = [];
       this.yesterdayUnfinished = null;
