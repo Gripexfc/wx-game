@@ -38,6 +38,7 @@ class Lulu {
     this.xp = 0;
     this.stage = LULU_STAGES.BABY;
     this.accessories = [];
+    this.unlockedActions = [];
 
     this.petFrame = 0;
     this.mood = 'idle';
@@ -59,17 +60,50 @@ class Lulu {
     this.todayInteractionCount = 0;
     this.taskNoReactionStreak = 0;
 
-    /** 自动动作状态机 */
-    this.autoAction = null;        // 'cute'|'crawl'|'run'|null
-    this.autoActionTimer = 0;      // 当前动作剩余帧数
-    this.nextAutoActionAt = 240 + Math.floor(Math.random() * 120); // 下次触发帧数
-    this.autoActionPaused = false; // 用户交互中暂停
-    this._autoActionPhase = 0;     // 动作内帧计数（用于动画插值）
+    this.autoAction = null;
+    this.autoActionTimer = 0;
+    this.nextAutoActionAt = 240 + Math.floor(Math.random() * 120);
+    this.autoActionPaused = false;
+    this._autoActionPhase = 0;
 
-    /** 左右滑：负值略向左转（见背），正值向右 */
     this.turn = 0;
     this.turnSmooth = 0;
     this.petDragging = false;
+
+    /** PetStateManager 引用（由 main.js 注入） */
+    this._psm = null;
+
+    /** 酷炫动作状态 */
+    this._coolActionId = null;
+    this._coolActionFrame = 0;
+    this._coolActionCallback = null;
+    this._coolActionDuration = 0;
+  }
+
+  setPetStateManager(psm) {
+    this._psm = psm;
+    if (psm) {
+      this.moodValue = psm.moodValue;
+    }
+  }
+
+  /** 获取心情级别人名 */
+  getMoodLevelName() {
+    if (!this._psm) return '开心';
+    return this._psm.getMoodLevel();
+  }
+
+  /** 目标完成时调用（宠物见证） */
+  onGoalCompleted(goalName) {
+    const name = goalName || '目标';
+    this.mood = 'happy';
+    this.moodTimer = 55;
+    this.triggerRewardInteraction(name);
+  }
+
+  say(text, frames = 110) {
+    this.sayText = text;
+    this.sayTimer = frames;
   }
 
   getStage() {
@@ -216,8 +250,9 @@ class Lulu {
   }
 
   update() {
-    this.petFrame += 1;
-    this.bob = Math.sin(this.petFrame * 0.055) * 3.2;
+    const speedFactor = this._psm ? this._psm.getMoodSpeedFactor() : 1.0;
+    this.petFrame += speedFactor;
+    this.bob = Math.sin(this.petFrame * 0.055) * 3.2 * speedFactor;
 
     this.turnSmooth += (this.turn - this.turnSmooth) * 0.26;
     if (!this.petDragging && Math.abs(this.turn) > 0.008) {
@@ -309,6 +344,10 @@ class Lulu {
     }
 
     ctx.restore();
+
+    if (this._coolActionId) {
+      this._drawCoolAction(ctx, cx, cy, base);
+    }
 
     const headR = base * 0.42;
     const bodyRy = base * 0.42;
@@ -760,6 +799,94 @@ class Lulu {
     ctx.lineTo(x, y + r);
     ctx.arcTo(x, y, x + r, y, r);
     ctx.closePath();
+  }
+
+  // ========== 心情级外观变化 ==========
+
+  /** 根据心情值对颜色做饱和度调整 */
+  _applyMoodSaturation(ctx, colorMult) {
+    if (colorMult === 1.0) return;
+    if (colorMult < 1.0) {
+      ctx.globalAlpha = colorMult;
+    }
+  }
+
+  // ========== 酷炫动作 ==========
+
+  playCoolAction(actionId, callback) {
+    this._coolActionId = actionId;
+    this._coolActionFrame = 0;
+    this._coolActionCallback = callback || null;
+    const durations = {
+      heartbeat: 90, dance: 120, backflip: 60, rainbow: 150, takeoff: 100,
+      supersugar: 180, royal: 200, transform: 240, universe: 300,
+    };
+    this._coolActionDuration = durations[actionId] || 120;
+  }
+
+  _drawCoolAction(ctx, cx, cy, base) {
+    if (!this._coolActionId) return;
+    const progress = this._coolActionFrame / this._coolActionDuration;
+    const id = this._coolActionId;
+
+    ctx.save();
+    if (id === 'heartbeat') {
+      const scale = 1 + Math.sin(progress * Math.PI * 6) * 0.08 * (1 - progress);
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.translate(-cx, -cy);
+    } else if (id === 'dance') {
+      const swing = Math.sin(progress * Math.PI * 4) * 0.1;
+      ctx.translate(cx, cy);
+      ctx.rotate(swing);
+      ctx.translate(-cx, -cy);
+    } else if (id === 'backflip') {
+      const angle = progress * Math.PI * 2;
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.translate(-cx, -cy);
+    } else if (id === 'rainbow') {
+      const alpha = Math.sin(progress * Math.PI) * 0.8;
+      ctx.fillStyle = `rgba(255,100,200,${alpha * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy - base * 0.8, base * 0.6 * progress, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (id === 'takeoff') {
+      const lift = Math.sin(progress * Math.PI) * base * 0.3;
+      ctx.translate(0, -lift);
+    } else if (id === 'supersugar') {
+      const alpha = Math.sin(progress * Math.PI);
+      ctx.fillStyle = `rgba(255,50,100,${alpha * 0.4})`;
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2 + progress * Math.PI;
+        const r = base * 0.5 * (0.5 + progress * 0.5);
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, base * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (id === 'royal') {
+      const glow = Math.sin(progress * Math.PI) * 0.3;
+      ctx.shadowColor = '#FFD700';
+      ctx.shadowBlur = base * 0.5 * progress;
+    } else if (id === 'transform') {
+      const pulse = 1 + Math.sin(progress * Math.PI * 2) * 0.1;
+      ctx.translate(cx, cy);
+      ctx.scale(pulse, pulse);
+      ctx.translate(-cx, -cy);
+      ctx.globalAlpha = 0.5 + Math.sin(progress * Math.PI) * 0.5;
+    } else if (id === 'universe') {
+      const alpha = Math.sin(progress * Math.PI);
+      ctx.fillStyle = `rgba(100,50,200,${alpha * 0.3})`;
+      ctx.fillRect(0, 0, 400, 700);
+    }
+    ctx.restore();
+
+    this._coolActionFrame++;
+    if (this._coolActionFrame >= this._coolActionDuration) {
+      if (this._coolActionCallback) this._coolActionCallback();
+      this._coolActionId = null;
+      this._coolActionFrame = 0;
+    }
   }
 }
 
