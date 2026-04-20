@@ -66,6 +66,15 @@ class Game {
 
     this.loadData();
     this.homePage.setLulu(this.lulu);
+    this.homePage.setGameSystems({
+      goalManager: this.goalManager,
+      wishManager: this.wishManager,
+      petStateManager: this.petStateManager,
+      growth: this.growth,
+      onCompleteGoal: (goalId) => this.completeGoal(goalId),
+      onCommitGoal: (goalId) => { /* 承诺目标 */ },
+      onCreateGoal: (goal) => { /* 创建目标 */ },
+    });
 
     const BannerAdManager = require('./ads/BannerAdManager');
     BannerAdManager.getInstance().init('YOUR_BANNER_AD_UNIT_ID');
