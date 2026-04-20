@@ -2,6 +2,7 @@
  * 首次昵称引导页
  */
 const BannerAdManager = require('../ads/BannerAdManager');
+const { canvasRoundRect } = require('../utils/canvas');
 
 class OnboardingPage {
   constructor(game) {
@@ -143,16 +144,16 @@ class OnboardingPage {
     const cardY = canvasHeight * 0.52;
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    this._roundRect(ctx, cardX, cardY, cardW, cardH, 16);
+    canvasRoundRect(ctx, cardX, cardY, cardW, cardH, 16);
     ctx.fill();
     ctx.strokeStyle = 'rgba(255, 179, 71, 0.4)';
     ctx.lineWidth = 1.5;
-    this._roundRect(ctx, cardX, cardY, cardW, cardH, 16);
+    canvasRoundRect(ctx, cardX, cardY, cardW, cardH, 16);
     ctx.stroke();
 
     // 输入框占位区域（实际用 showModal）
     ctx.fillStyle = 'rgba(91, 74, 58, 0.1)';
-    this._roundRect(ctx, cardX + 16, cardY + 20, cardW - 32, 46, 10);
+    canvasRoundRect(ctx, cardX + 16, cardY + 20, cardW - 32, 46, 10);
     ctx.fill();
     ctx.fillStyle = 'rgba(138, 119, 101, 0.5)';
     ctx.font = '15px sans-serif';
@@ -168,7 +169,7 @@ class OnboardingPage {
 
     const btnEnabled = this.confirmEnabled;
     ctx.fillStyle = btnEnabled ? '#FFB347' : 'rgba(255, 179, 71, 0.4)';
-    this._roundRect(ctx, btnX, btnY, btnW, btnH, 23);
+    canvasRoundRect(ctx, btnX, btnY, btnW, btnH, 23);
     ctx.fill();
     ctx.fillStyle = btnEnabled ? '#FFF' : 'rgba(255,255,255,0.7)';
     ctx.font = '600 16px sans-serif';
@@ -181,20 +182,6 @@ class OnboardingPage {
 
     // Banner 广告
     this._banner.show();
-  }
-
-  _roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
   }
 }
 

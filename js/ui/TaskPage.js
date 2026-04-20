@@ -1,4 +1,5 @@
 const { COLORS, TASKS } = require('../utils/constants');
+const { canvasRoundRect } = require('../utils/canvas');
 
 class TaskPage {
   constructor(game) {
@@ -59,13 +60,13 @@ class TaskPage {
 
     // 背景
     ctx.fillStyle = task.completed ? '#E8F5E9' : '#FFF';
-    this.roundRect(ctx, x, y, width, height, 12);
+    canvasRoundRect(ctx, x, y, width, height, 12);
     ctx.fill();
 
     // 边框
     ctx.strokeStyle = task.completed ? COLORS.SECONDARY : '#E0E0E0';
     ctx.lineWidth = 2;
-    this.roundRect(ctx, x, y, width, height, 12);
+    canvasRoundRect(ctx, x, y, width, height, 12);
     ctx.stroke();
 
     // 图标
@@ -108,7 +109,7 @@ class TaskPage {
     ctx.fillStyle = '#FFF';
     ctx.strokeStyle = COLORS.ACCENT;
     ctx.lineWidth = 2;
-    this.roundRect(ctx, x, y, width, height, 12);
+    canvasRoundRect(ctx, x, y, width, height, 12);
     ctx.fill();
     ctx.stroke();
 
@@ -146,20 +147,6 @@ class TaskPage {
     }
 
     return false;
-  }
-
-  roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
   }
 }
 

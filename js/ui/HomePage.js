@@ -2,6 +2,7 @@
 // 色彩：奶油米白、暖黄、橙黄、柔和蓝、浅绿
 
 const BannerAdManager = require('../ads/BannerAdManager');
+const { canvasRoundRect } = require('../utils/canvas');
 
 const UI = {
   // 背景渐变
@@ -374,7 +375,7 @@ class HomePage {
     const badgeY = topY + (topSectionH - badgeH) / 2;
 
     ctx.fillStyle = UI.pill;
-    this.roundRect(ctx, badgeX, badgeY, badgeW, badgeH, 13);
+    canvasRoundRect(ctx, badgeX, badgeY, badgeW, badgeH, 13);
     ctx.fill();
     ctx.fillStyle = UI.pillText;
     ctx.font = '600 11px sans-serif';
@@ -388,11 +389,11 @@ class HomePage {
 
     // ===== 宠物卡片（圆角24px大卡片） =====
     ctx.fillStyle = UI.petCardBg;
-    this.roundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 24);
+    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 24);
     ctx.fill();
     ctx.strokeStyle = UI.petCardBorder;
     ctx.lineWidth = 1.5;
-    this.roundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 24);
+    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 24);
     ctx.stroke();
 
     // 语音气泡
@@ -401,11 +402,11 @@ class HomePage {
     const bubbleX = L.petCardX + (L.petCardW - bubbleW) / 2;
     const bubbleY = L.petCardY - 10;
     ctx.fillStyle = 'rgba(255, 252, 248, 0.98)';
-    this.roundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 14);
+    canvasRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 14);
     ctx.fill();
     ctx.strokeStyle = 'rgba(255, 179, 71, 0.5)';
     ctx.lineWidth = 1.5;
-    this.roundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 14);
+    canvasRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 14);
     ctx.stroke();
     ctx.fillStyle = UI.text;
     ctx.font = '500 12px sans-serif';
@@ -431,11 +432,11 @@ class HomePage {
 
     // XP 状态卡
     ctx.fillStyle = UI.moodBg;
-    this.roundRect(ctx, xpCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
+    canvasRoundRect(ctx, xpCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
     ctx.fill();
     ctx.strokeStyle = UI.moodBorder;
     ctx.lineWidth = 1;
-    this.roundRect(ctx, xpCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
+    canvasRoundRect(ctx, xpCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
     ctx.stroke();
     ctx.fillStyle = UI.textMuted;
     ctx.font = '10px sans-serif';
@@ -452,19 +453,19 @@ class HomePage {
     const miniBarY = L.statusCardY + 40;
     const xpProg = growth.getXpProgress();
     ctx.fillStyle = UI.barBg;
-    this.roundRect(ctx, miniBarX, miniBarY, miniBarW, miniBarH, 2);
+    canvasRoundRect(ctx, miniBarX, miniBarY, miniBarW, miniBarH, 2);
     ctx.fill();
     ctx.fillStyle = UI.barFill;
-    this.roundRect(ctx, miniBarX, miniBarY, Math.max(miniBarH, miniBarW * xpProg), miniBarH, 2);
+    canvasRoundRect(ctx, miniBarX, miniBarY, Math.max(miniBarH, miniBarW * xpProg), miniBarH, 2);
     ctx.fill();
 
     // 心情状态卡
     ctx.fillStyle = UI.moodBg;
-    this.roundRect(ctx, moodCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
+    canvasRoundRect(ctx, moodCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
     ctx.fill();
     ctx.strokeStyle = UI.moodBorder;
     ctx.lineWidth = 1;
-    this.roundRect(ctx, moodCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
+    canvasRoundRect(ctx, moodCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
     ctx.stroke();
     ctx.fillStyle = UI.textMuted;
     ctx.font = '10px sans-serif';
@@ -477,20 +478,20 @@ class HomePage {
     // 心情mini进度条
     const moodBarX = moodCardX + 10;
     ctx.fillStyle = UI.barBg;
-    this.roundRect(ctx, moodBarX, miniBarY, miniBarW, miniBarH, 2);
+    canvasRoundRect(ctx, moodBarX, miniBarY, miniBarW, miniBarH, 2);
     ctx.fill();
     ctx.fillStyle = '#8FC8FF';
-    this.roundRect(ctx, moodBarX, miniBarY, Math.max(miniBarH, miniBarW * (mood / 100)), miniBarH, 2);
+    canvasRoundRect(ctx, moodBarX, miniBarY, Math.max(miniBarH, miniBarW * (mood / 100)), miniBarH, 2);
     ctx.fill();
 
     // ===== XP进度条 =====
     const xpBarW = canvasWidth - pad * 2;
     const prog = growth.getXpProgress();
     ctx.fillStyle = UI.barBg;
-    this.roundRect(ctx, pad, L.xpBarY, xpBarW, 6, 3);
+    canvasRoundRect(ctx, pad, L.xpBarY, xpBarW, 6, 3);
     ctx.fill();
     ctx.fillStyle = UI.barFill;
-    this.roundRect(ctx, pad, L.xpBarY, Math.max(6, xpBarW * prog), 6, 3);
+    canvasRoundRect(ctx, pad, L.xpBarY, Math.max(6, xpBarW * prog), 6, 3);
     ctx.fill();
     ctx.fillStyle = UI.textMuted;
     ctx.font = '10px sans-serif';
@@ -545,11 +546,11 @@ class HomePage {
     const isDone = commit.completed;
     ctx.save();
     ctx.fillStyle = isDone ? 'rgba(143,214,163,0.2)' : UI.card;
-    this.roundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
+    canvasRoundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
     ctx.fill();
     ctx.strokeStyle = isDone ? 'rgba(143,214,163,0.5)' : UI.cardBorder;
     ctx.lineWidth = 1.5;
-    this.roundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
+    canvasRoundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
     ctx.stroke();
 
     const cx = slot.x + slot.w / 2;
@@ -574,7 +575,7 @@ class HomePage {
     ctx.fillStyle = 'rgba(245,176,65,0.08)';
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
-    this.roundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
+    canvasRoundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
     ctx.fill();
     ctx.strokeStyle = 'rgba(245,176,65,0.3)';
     ctx.stroke();
@@ -623,17 +624,17 @@ class HomePage {
 
     // 卡片背景
     ctx.fillStyle = task.completed ? 'rgba(255,255,255,0.7)' : UI.card;
-    this.roundRect(ctx, x, y, w, h, 14);
+    canvasRoundRect(ctx, x, y, w, h, 14);
     ctx.fill();
     ctx.strokeStyle = task.completed ? 'rgba(143, 214, 163, 0.4)' : UI.cardBorder;
     ctx.lineWidth = 1.5;
-    this.roundRect(ctx, x, y, w, h, 14);
+    canvasRoundRect(ctx, x, y, w, h, 14);
     ctx.stroke();
 
     // 自定义任务：淡绿底色
     if (task.isPlaceholder && !task.completed) {
       ctx.fillStyle = 'rgba(143, 214, 163, 0.12)';
-      this.roundRect(ctx, x + 1, y + 1, w - 2, h - 2, 13);
+      canvasRoundRect(ctx, x + 1, y + 1, w - 2, h - 2, 13);
       ctx.fill();
     }
 
@@ -669,20 +670,6 @@ class HomePage {
     }
 
     ctx.restore();
-  }
-
-  roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
   }
 }
 
