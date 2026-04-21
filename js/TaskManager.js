@@ -1,5 +1,5 @@
 const { TASKS } = require('../utils/constants');
-const { getTodayString } = require('../utils/date');
+const { getTodayString } = require('./utils/date');
 
 const PLACEHOLDER_ID = '__daily_placeholder__';
 const DAILY_CUSTOM_ID = 'daily_custom';

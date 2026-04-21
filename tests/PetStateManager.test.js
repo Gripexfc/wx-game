@@ -1,5 +1,5 @@
 // PetStateManager 单元测试
-const PetStateManager = require('../PetStateManager');
+const PetStateManager = require('../js/PetStateManager');
 
 function createPSM(mood = 68) {
   const psm = new PetStateManager();
@@ -98,28 +98,24 @@ test('calculateMoodDecay: correct decay for each disconnect days', () => {
 test('settleDaily: mood reduced by correct decay amount', () => {
   const psm = createPSM(68);
   psm.settleDaily(2, { completedCount: 0, totalCommitments: 2, consecutiveDays: 0 });
-  expect(psm.moodValue).toBe(60); // 68 - 8
+  expect(psm.moodValue).toBe(60);
 });
 
 test('settleDaily: with no tasks completed reduces mood by -8', () => {
   const psm = createPSM(68);
   psm.settleDaily(0, { completedCount: 0, totalCommitments: 3, consecutiveDays: 0 });
-  expect(psm.moodValue).toBe(60); // 68 - 8
+  expect(psm.moodValue).toBe(60);
 });
 
 test('settleDaily: with tasks completed adds mood based on score', () => {
   const psm = createPSM(50);
   psm.settleDaily(0, { completedCount: 2, totalCommitments: 4, consecutiveDays: 0 });
-  // score = 2*15 + 0 = 30, moodDelta = min(9, 30) = 9
   expect(psm.moodValue).toBe(59);
 });
 
 test('settleDaily: score capped at 100', () => {
   const psm = createPSM(50);
   psm.settleDaily(0, { completedCount: 4, totalCommitments: 4, consecutiveDays: 30 });
-  // score = 4*15 + 12 = 72 (< 100, not capped)
-  // moodDelta = min(72*0.3, 30) = 21.6 → 22
-  // moodValue = 50 + 22 = 72
   expect(psm.moodValue).toBe(72);
 });
 
@@ -147,7 +143,6 @@ test('settleDaily: updates totalDays and completedDays', () => {
 test('settleDaily: updates petEveningMood', () => {
   const psm = createPSM(68);
   psm.settleDaily(0, { completedCount: 1, totalCommitments: 2, consecutiveDays: 0 });
-  // moodDelta = min(15*0.3, 30) = 4.5 → 5, mood = 68+5 = 73
   expect(psm.petEveningMood).toBe(73);
 });
 
@@ -166,7 +161,7 @@ test('checkMilestone: returns null if already triggered', () => {
 
 test('checkMilestone: day7 triggers when day3 already done', () => {
   const psm = createPSM(68);
-  psm.milestones.day3 = true; // day3已触发
+  psm.milestones.day3 = true;
   psm.consecutiveDays = 7;
   expect(psm.checkMilestone()).toBe('day7');
 });

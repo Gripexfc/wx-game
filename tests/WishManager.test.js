@@ -1,5 +1,5 @@
 // WishManager 单元测试
-const WishManager = require('../WishManager');
+const WishManager = require('../js/WishManager');
 
 function createWM() {
   const wm = new WishManager();
@@ -109,12 +109,9 @@ test('checkDailyReset: clears wishes on new day', () => {
 test('getUnfinishedYesterday: returns yesterday incomplete wish text', () => {
   const wm = createWM();
   const goals = [{ id: 'g1', name: '每天跑步30分钟', type: 'habit', xp: 20, tag: '运动' }];
-  // 第一天生成心愿（未完成）
   wm.generateDailyWishes(goals);
-  // 模拟进入第二天：清空重置日期，重新生成
   wm.lastResetDate = null;
   wm.generateDailyWishes(goals);
-  // 现在 yesterdayUnfinished 应该被设置了
   expect(wm.getUnfinishedYesterday()).toBeTruthy();
 });
 

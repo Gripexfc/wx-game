@@ -1,7 +1,5 @@
 // main.js — 噜噜养成主游戏入口（重构版）
 
-import './render';
-
 const DESIGN_W = 375;
 const DESIGN_H = 667;
 
@@ -167,12 +165,33 @@ class Game {
 
   getLuluName() {
     const name = this.storage.get(STORAGE_KEYS_LULU.LULU_NAME);
-    return (name && name.trim()) ? name.trim() : '小明';
+    return (name && name.trim()) ? name.trim() : '小鸭';
   }
 
   onNameSet(name) {
     this.currentPage = 'home';
     this.homePage.setLulu(this.lulu);
+  }
+
+  createAndCommitGoal(goalData) {
+    try {
+      const goal = this.goalManager.createGoal(goalData);
+      this.goalManager.commitGoal(goal.id);
+      if (this.wishManager.getTodayWishes().length === 0) {
+        this.wishManager.generateDailyWishes(this.goalManager.getGoals());
+      }
+      this.saveData();
+      return goal;
+    } catch (error) {
+      if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({
+          title: error && error.message ? error.message : '添加目标失败',
+          icon: 'none',
+          duration: 1500,
+        });
+      }
+      return null;
+    }
   }
 
   _getMilestoneDialogue(milestone) {
@@ -290,41 +309,19 @@ class Game {
     const commitments = this.goalManager.getTodayCommitments();
     const commit = commitments.find(c => c.goalId === goalId);
     if (!commit || commit.completed) return;
-
-    this.goalManager.completeCommitment(goalId);
+    const goal = this.goalManager.getGoalById(goalId);
 
     // 查找对应心愿并完成
     const wish = this.wishManager.getTodayWishes().find(w => w.goalId === goalId);
+    const extraReward = wish ? 5 : 0;
+    const xpBreakdown = this.goalManager.calculateGoalXp(goalId, this.petStateManager.moodValue, extraReward);
+
+    this.goalManager.completeCommitment(goalId);
     let wishReward = null;
     if (wish) {
       wishReward = this.wishManager.completeWish(wish.id);
     }
-
-    // 目标状态更新（从 WishManager 移入此处）
-    const goal = this.goalManager.getGoalById(wish.goalId);
-    if (goal) {
-      goal.lastDoneAt = this.goalManager.getTodayString();
-      if (goal.type === 'milestone') {
-        goal.currentProgress = Math.min(
-          (goal.currentProgress || 0) + 1,
-          goal.totalProgress
-        );
-        if (goal.currentProgress >= goal.totalProgress) {
-          goal.completed = true;
-        }
-      }
-      if (goal.type === 'oneTime') {
-        goal.completed = true;
-      }
-      if (wishReward) {
-        wishReward.goalCompleted = goal.completed;
-      }
-    }
-
-    // XP结算（单次上限30）
-    const baseXp = goal ? goal.xp : 15;
-    const moodMult = this.petStateManager.getMoodXPMultiplier();
-    const xp = Math.min(30, Math.round((baseXp + (wishReward ? 5 : 0)) * moodMult));
+    const xp = xpBreakdown.total;
 
     const levelBefore = this.growth.level;
     this.growth.addXp(xp);
@@ -332,7 +329,7 @@ class Game {
       this.lulu.level = this.growth.level;
     }
     if (this.growth.level > levelBefore) {
-      this.lulu.say('升级了噜噜！', 100);
+      this.lulu.say(`${this.getLuluName()}升级啦！`, 100);
     }
 
     // 心情更新
@@ -346,7 +343,9 @@ class Game {
     }
 
     // 宠物见证反馈
-    this.lulu.onGoalCompleted(goal ? goal.name : '目标');
+    if (this.lulu && typeof this.lulu.onGoalCompleted === 'function') {
+      this.lulu.onGoalCompleted(goal ? goal.name : '目标');
+    }
 
     // 30%概率触发酷炫动作
     if (Math.random() < COOL_ACTION_PROB) {
@@ -358,6 +357,12 @@ class Game {
     }
 
     this.saveData();
+    return {
+      goal,
+      wishReward,
+      xpAwarded: xp,
+      xpBreakdown,
+    };
   }
 
   onLuluInteraction() {
@@ -386,11 +391,11 @@ class Game {
       this._lastOnlineXPTime = now;
       if (this.growth.level > before) {
         this.lulu.level = this.growth.level;
-        this.lulu.say('升级了噜噜！', 100);
+        this.lulu.say(`${this.getLuluName()}升级啦！`, 100);
       }
       if (this._onlineXP > 0 && this._onlineXP % 5 === 0) {
         if (typeof wx !== 'undefined' && wx.showToast) {
-          wx.showToast({ title: `噜噜陪你涨了 +${this._onlineXP} XP`, icon: 'none', duration: 1500 });
+          wx.showToast({ title: `${this.getLuluName()}陪你涨了 +${this._onlineXP} XP`, icon: 'none', duration: 1500 });
         }
       }
     }

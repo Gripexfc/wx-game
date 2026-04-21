@@ -3,6 +3,8 @@
 
 const BannerAdManager = require('../ads/BannerAdManager');
 const { canvasRoundRect } = require('../utils/canvas');
+const GoalPickerOverlay = require('./GoalPickerOverlay');
+const { getBrandCopy, getHomePageLayoutSpec, getHomePageCommitmentLayout } = require('./pageLayoutSpec');
 
 // 游戏常量
 const TAP_DISTANCE_THRESHOLD = 16;   // 触摸移动距离阈值
@@ -51,6 +53,7 @@ class HomePage {
     this._touch = { mode: null, lastX: 0, lastY: 0, startX: 0, startY: 0, petMoved: false, task: null };
     this._taskPress = null;
     this._banner = BannerAdManager.getInstance();
+    this.goalPicker = new GoalPickerOverlay(game);
 
     // 新增：承诺槽位（4格）
     this._commitmentSlots = [];
@@ -73,70 +76,108 @@ class HomePage {
     this._petStateManager = petStateManager;
     this._growth = growth;
     this._onCompleteGoal = onCompleteGoal;
-    this._onCommitGoal = null;
-    this._onCreateGoal = null;
+    this._onCommitGoal = onCommitGoal;
+    this._onCreateGoal = onCreateGoal;
   }
 
   setLulu(lulu) {
     this.lulu = lulu;
   }
 
+  _getDuckName() {
+    return this.game.getLuluName ? this.game.getLuluName() : '小鸭';
+  }
+
+  _openGoalPicker() {
+    const duckName = this._getDuckName();
+    this.goalPicker.open({
+      title: `今天想和${duckName}一起坚持什么？`,
+      subtitle: '选一个推荐目标，或者自己写一个',
+      mandatory: false,
+    });
+  }
+
+  _applyGoalSelection(goalData) {
+    const created = this.game.createAndCommitGoal(goalData);
+    if (!created) return false;
+    if (this.lulu) {
+      this.lulu.say('目标记下啦，一起慢慢做到它', 120);
+    }
+    this.goalPicker.close(true);
+    return true;
+  }
+
+  _promptCustomGoal() {
+    if (typeof wx === 'undefined' || !wx.showModal) return;
+    wx.showModal({
+      title: '写一个今天的小目标',
+      editable: true,
+      placeholderText: '比如：晚饭后散步20分钟',
+      confirmText: '加入今天',
+      cancelText: '取消',
+      success: (res) => {
+        if (!res.confirm) return;
+        const text = String(res.content || '').trim();
+        if (!text) {
+          if (wx.showToast) wx.showToast({ title: '先写一个目标名吧', icon: 'none', duration: 1400 });
+          return;
+        }
+        this._applyGoalSelection({
+          name: text,
+          type: 'habit',
+          baseXp: 15,
+          icon: '✨',
+          tag: '自定义',
+          createdFrom: 'custom',
+        });
+      },
+    });
+  }
+
+  _handleGoalPickerAction(action) {
+    if (!action) return;
+    if (action.type === 'goal' && action.goal) {
+      this._applyGoalSelection(action.goal);
+      return;
+    }
+    if (action.type === 'custom') {
+      this._promptCustomGoal();
+    }
+  }
+
   computeLayout(canvasWidth, canvasHeight) {
-    const pad = 15;
-    const top = 10;
-    const bottomReserve = 18;
-
-    // Top section
-    const topSectionH = 44;
-    const topY = top;
-
-    // Pet card: generous size, fills ~45% of content area
-    const petCardW = Math.min(310, canvasWidth - pad * 2);
-    const petCardH = Math.floor(canvasHeight * 0.42);
+    const spec = getHomePageLayoutSpec(canvasWidth, canvasHeight);
+    const commitmentLayout = getHomePageCommitmentLayout(canvasWidth, canvasHeight);
+    const pad = spec.horizontalPadding;
+    const topY = spec.topPadding;
+    const topSectionH = spec.headerHeight;
+    const petCardW = Math.min(spec.petCardWidth, canvasWidth - pad * 2);
+    const petCardH = spec.petCardHeight;
     const petCardX = (canvasWidth - petCardW) / 2;
-    const petCardY = topY + topSectionH + 6;
-
-    // Status cards: 4px gap from pet card (close, tight grouping)
-    const statusCardGap = 10;
-    const statusCardH = 54;
-    const statusCardW = Math.floor((petCardW - statusCardGap) / 2);
-    const statusCardY = petCardY + petCardH + 4;
-
-    // XP bar: 8px gap from status cards
-    const xpBarY = statusCardY + statusCardH + 8;
-
-    // Task grid: label 8px above grid
-    const taskGridY = xpBarY + 18;
-    const taskGap = 10;
-    const taskCardW = Math.floor((canvasWidth - pad * 2 - taskGap) / 2);
-    const taskCardH = 96;
-    const tasksAll = this.getDisplayTasks();
-
-    // 2x2 grid
-    const displayTasks = tasksAll.slice(0, 4);
-    const rows = Math.ceil(displayTasks.length / 2);
-    const taskGridH = rows * taskCardH + (rows - 1) * taskGap;
-    const bottomH = taskGridY + taskGridH + bottomReserve;
+    const petCardY = spec.petCardTop;
+    const actionAreaX = commitmentLayout.actionArea.x;
+    const actionAreaY = commitmentLayout.actionArea.y;
+    const actionAreaW = commitmentLayout.actionArea.w;
+    const actionAreaH = commitmentLayout.actionArea.h;
+    const actionHeaderH = commitmentLayout.actionHeaderHeight;
+    const commitmentSlots = commitmentLayout.cards;
+    const bottomH = actionAreaY + actionAreaH + spec.bottomPadding;
 
     return {
+      spec,
       pad,
-      top,
       topSectionH,
       topY,
       petCardX,
       petCardY,
       petCardW,
       petCardH,
-      statusCardGap,
-      statusCardY,
-      statusCardH,
-      statusCardW,
-      xpBarY,
-      taskGridY,
-      taskCardW,
-      taskCardH,
-      taskGap,
-      displayTasks,
+      actionAreaX,
+      actionAreaY,
+      actionAreaW,
+      actionAreaH,
+      actionHeaderH,
+      commitmentSlots,
       bottomH,
       canvasHeight,
     };
@@ -161,9 +202,9 @@ class HomePage {
     }
 
     // 承诺槽位检测
-    if (this._commitmentSlots && this._commitmentSlots.length > 0) {
-      for (let i = 0; i < this._commitmentSlots.length; i++) {
-        const slot = this._commitmentSlots[i];
+    if (L.commitmentSlots && L.commitmentSlots.length > 0) {
+      for (let i = 0; i < L.commitmentSlots.length; i++) {
+        const slot = L.commitmentSlots[i];
         if (x >= slot.x && x <= slot.x + slot.w && y >= slot.y && y <= slot.y + slot.h) {
           const commitments = this._goalManager ? this._goalManager.getTodayCommitments() : [];
           return { zone: 'commitment', index: i, commit: commitments[i], layout: L };
@@ -171,22 +212,14 @@ class HomePage {
       }
     }
 
-    // Task grid (legacy, 兼容旧逻辑)
-    for (let i = 0; i < L.displayTasks.length; i++) {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const tx = L.pad + col * (L.taskCardW + L.taskGap);
-      const ty = L.taskGridY + row * (L.taskCardH + L.taskGap);
-      const tw = L.taskCardW;
-      if (x >= tx && x <= tx + tw && y >= ty && y <= ty + L.taskCardH) {
-        return { zone: 'task', task: L.displayTasks[i], layout: L };
-      }
-    }
-
     return { zone: null, layout: L };
   }
 
   onTouchStart(x, y, canvasWidth, canvasHeight) {
+    if (this.goalPicker.visible) {
+      this._handleGoalPickerAction(this.goalPicker.handleClick(x, y));
+      return;
+    }
     const hit = this.hitTest(x, y, canvasWidth, canvasHeight);
     this._touch = { mode: null, lastX: x, lastY: y, startX: x, startY: y, petMoved: false, task: null };
 
@@ -197,10 +230,6 @@ class HomePage {
       this._touch.mode = 'commitment';
       this._touch.commit = hit.commit;
       this._touch.commitIndex = hit.index;
-    } else if (hit.zone === 'task' && hit.task && !hit.task.isPlaceholder) {
-      this._touch.mode = 'task';
-      this._touch.task = hit.task;
-      this._taskPress = { id: hit.task.id, scale: TASK_PRESS_SCALE };
     }
   }
 
@@ -225,17 +254,12 @@ class HomePage {
         this.game.onLuluInteraction();
       }
     } else if (t.mode === 'commitment') {
-      if (dist < 18 && this._onCompleteGoal && t.commit && !t.commit.completed) {
-        this._onCompleteGoal(t.commit.goalId);
-      }
-    } else if (t.mode === 'task' && t.task && dist < 18) {
-      const task = t.task;
-      if (task.isPlaceholder) {
-        this.openDailyEditor();
-      } else if (task.isCustom) {
-        this.openCustomTaskMenu(task);
-      } else if (!task.completed) {
-        this.game.completeGoal(task.id);
+      if (dist < 18) {
+        if (this._onCompleteGoal && t.commit && !t.commit.completed) {
+          this._onCompleteGoal(t.commit.goalId);
+        } else if (!t.commit) {
+          this._openGoalPicker();
+        }
       }
     }
 
@@ -397,6 +421,8 @@ class HomePage {
     const growth = this.game.growth;
     const mood = this.lulu ? this.lulu.getMoodValue() : 60;
     const moodLabel = this.lulu ? this.lulu.getMoodLabel() : '平稳';
+    const luluName = this._getDuckName();
+    const brandCopy = getBrandCopy(luluName);
 
     // 背景渐变
     const g = ctx.createLinearGradient(0, 0, 0, canvasHeight);
@@ -413,70 +439,57 @@ class HomePage {
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-    // ===== 顶部区域 =====
+    // ===== 顶部轻头部 =====
     const pad = L.pad;
     const topY = L.topY;
     const topSectionH = L.topSectionH;
 
-    // 左侧：用户头像 + 昵称
-    const avatarSize = 36;
-    const avatarX = pad;
-    const avatarY = topY + (topSectionH - avatarSize) / 2;
-    ctx.fillStyle = UI.accentSoft;
-    ctx.beginPath();
-    ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+    const brandChipW = 118;
+    const brandChipH = 24;
+    const brandChipX = pad;
+    const brandChipY = topY + 2;
+    ctx.fillStyle = 'rgba(255, 214, 107, 0.28)';
+    canvasRoundRect(ctx, brandChipX, brandChipY, brandChipW, brandChipH, 12);
     ctx.fill();
-    ctx.fillStyle = UI.text;
-    ctx.font = '16px sans-serif';
+    ctx.fillStyle = UI.pillText;
+    ctx.font = '700 12px sans-serif';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('😊', avatarX + avatarSize / 2, avatarY + avatarSize / 2);
-    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(brandCopy.brandTitle, brandChipX + brandChipW / 2, brandChipY + 16);
 
-    ctx.fillStyle = UI.text;
-    ctx.font = '600 14px sans-serif';
-    ctx.textAlign = 'left';
-    const luluName = this.game.getLuluName ? this.game.getLuluName() : '小明';
-    ctx.fillText(luluName, avatarX + avatarSize + 8, topY + topSectionH / 2 + 5);
-
-    // 中间：页面标题
-    ctx.font = '700 18px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('噜噜任务小屋', canvasWidth / 2, topY + topSectionH / 2 + 5);
-
-    // 右侧：等级徽章 + 心情图标
-    const badgeW = 56;
-    const badgeH = 26;
-    const badgeX = canvasWidth - pad - badgeW - 24;
-    const badgeY = topY + (topSectionH - badgeH) / 2;
-
+    const badgeW = 58;
+    const badgeH = 24;
+    const badgeX = canvasWidth - pad - badgeW;
+    const badgeY = brandChipY;
     ctx.fillStyle = UI.pill;
-    canvasRoundRect(ctx, badgeX, badgeY, badgeW, badgeH, 13);
+    canvasRoundRect(ctx, badgeX, badgeY, badgeW, badgeH, 12);
     ctx.fill();
     ctx.fillStyle = UI.pillText;
     ctx.font = '600 11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`Lv.${growth.level}`, badgeX + badgeW / 2, badgeY + 17);
+    ctx.fillText(`Lv.${growth.level}`, badgeX + badgeW / 2, badgeY + 16);
 
-    const moodIcon = mood >= 85 ? '☀️' : mood >= 65 ? '😊' : mood >= 40 ? '😐' : '😢';
-    ctx.font = '18px sans-serif';
+    ctx.fillStyle = UI.text;
+    ctx.font = '600 18px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(moodIcon, badgeX + badgeW + 6, badgeY + 18);
+    ctx.fillText(luluName, pad, topY + topSectionH - 8);
+    ctx.fillStyle = UI.textMuted;
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(brandCopy.homeRelationshipLine, canvasWidth - pad, topY + topSectionH - 8);
 
-    // ===== 宠物卡片（圆角24px大卡片） =====
+    // ===== 宠物主卡 =====
     ctx.fillStyle = UI.petCardBg;
-    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 24);
+    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, L.spec.petCardRadius);
     ctx.fill();
     ctx.strokeStyle = UI.petCardBorder;
     ctx.lineWidth = 1.5;
-    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 24);
+    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, L.spec.petCardRadius);
     ctx.stroke();
 
     // 语音气泡
-    const bubbleW = 120;
+    const bubbleW = Math.min(148, L.petCardW - 44);
     const bubbleH = 32;
     const bubbleX = L.petCardX + (L.petCardW - bubbleW) / 2;
-    const bubbleY = L.petCardY - 10;
+    const bubbleY = L.petCardY + 16;
     ctx.fillStyle = 'rgba(255, 252, 248, 0.98)';
     canvasRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 14);
     ctx.fill();
@@ -490,103 +503,46 @@ class HomePage {
     const bubbleText = (this.lulu && this.lulu.getActionText && this.lulu.getActionText()) || '在呢在呢～';
     ctx.fillText(bubbleText.length > 8 ? `${bubbleText.slice(0, 8)}…` : bubbleText, bubbleX + bubbleW / 2, bubbleY + 20);
 
-    // 噜噜宠物
+    // 小鸭主角
     if (this.lulu) {
       this.lulu.drawPet(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH);
     }
     this._hits.lulu = { x: L.petCardX, y: L.petCardY, w: L.petCardW, h: L.petCardH };
 
+    const footerY = L.petCardY + L.petCardH - 58;
+    ctx.fillStyle = 'rgba(255, 248, 238, 0.92)';
+    canvasRoundRect(ctx, L.petCardX + 16, footerY, L.petCardW - 32, 36, 18);
+    ctx.fill();
+    ctx.fillStyle = UI.text;
+    ctx.font = '600 11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${moodLabel} · Lv.${growth.level}`, L.petCardX + 30, footerY + 22);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${growth.xp}/${growth.getXpForNextLevel()} XP`, L.petCardX + L.petCardW - 30, footerY + 22);
+
     // 宠物卡片底部提示
     ctx.fillStyle = UI.hint;
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('轻点噜噜 · 触发互动', L.petCardX + L.petCardW / 2, L.petCardY + L.petCardH - 10);
+    ctx.fillText(`轻点${luluName} · 和它打个招呼`, L.petCardX + L.petCardW / 2, L.petCardY + L.petCardH - 10);
 
-    // ===== 状态卡片（XP + 心情） =====
-    const xpCardX = L.petCardX;
-    const moodCardX = L.petCardX + L.statusCardW + L.statusCardGap;
-
-    // XP 状态卡
-    ctx.fillStyle = UI.moodBg;
-    canvasRoundRect(ctx, xpCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
+    // ===== 轻行动区 =====
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.76)';
+    canvasRoundRect(ctx, L.actionAreaX, L.actionAreaY, L.actionAreaW, L.actionAreaH, L.spec.actionAreaRadius);
     ctx.fill();
-    ctx.strokeStyle = UI.moodBorder;
+    ctx.strokeStyle = 'rgba(255, 179, 71, 0.18)';
     ctx.lineWidth = 1;
-    canvasRoundRect(ctx, xpCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
+    canvasRoundRect(ctx, L.actionAreaX, L.actionAreaY, L.actionAreaW, L.actionAreaH, L.spec.actionAreaRadius);
     ctx.stroke();
-    ctx.fillStyle = UI.textMuted;
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('经验值', xpCardX + L.statusCardW / 2, L.statusCardY + 14);
     ctx.fillStyle = UI.text;
-    ctx.font = '700 16px sans-serif';
-    ctx.fillText(`${growth.xp}/${growth.getXpForNextLevel()}`, xpCardX + L.statusCardW / 2, L.statusCardY + 32);
-
-    // XP mini进度条
-    const miniBarW = L.statusCardW - 20;
-    const miniBarH = 4;
-    const miniBarX = xpCardX + 10;
-    const miniBarY = L.statusCardY + 40;
-    const xpProg = growth.getXpProgress();
-    ctx.fillStyle = UI.barBg;
-    canvasRoundRect(ctx, miniBarX, miniBarY, miniBarW, miniBarH, 2);
-    ctx.fill();
-    ctx.fillStyle = UI.barFill;
-    canvasRoundRect(ctx, miniBarX, miniBarY, Math.max(miniBarH, miniBarW * xpProg), miniBarH, 2);
-    ctx.fill();
-
-    // 心情状态卡
-    ctx.fillStyle = UI.moodBg;
-    canvasRoundRect(ctx, moodCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
-    ctx.fill();
-    ctx.strokeStyle = UI.moodBorder;
-    ctx.lineWidth = 1;
-    canvasRoundRect(ctx, moodCardX, L.statusCardY, L.statusCardW, L.statusCardH, 12);
-    ctx.stroke();
-    ctx.fillStyle = UI.textMuted;
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('心情值', moodCardX + L.statusCardW / 2, L.statusCardY + 14);
-    ctx.fillStyle = UI.text;
-    ctx.font = '700 16px sans-serif';
-    ctx.fillText(String(Math.round(mood)), moodCardX + L.statusCardW / 2, L.statusCardY + 32);
-
-    // 心情mini进度条
-    const moodBarX = moodCardX + 10;
-    ctx.fillStyle = UI.barBg;
-    canvasRoundRect(ctx, moodBarX, miniBarY, miniBarW, miniBarH, 2);
-    ctx.fill();
-    ctx.fillStyle = '#8FC8FF';
-    canvasRoundRect(ctx, moodBarX, miniBarY, Math.max(miniBarH, miniBarW * (mood / 100)), miniBarH, 2);
-    ctx.fill();
-
-    // ===== XP进度条 =====
-    const xpBarW = canvasWidth - pad * 2;
-    const prog = growth.getXpProgress();
-    ctx.fillStyle = UI.barBg;
-    canvasRoundRect(ctx, pad, L.xpBarY, xpBarW, 6, 3);
-    ctx.fill();
-    ctx.fillStyle = UI.barFill;
-    canvasRoundRect(ctx, pad, L.xpBarY, Math.max(6, xpBarW * prog), 6, 3);
-    ctx.fill();
-    ctx.fillStyle = UI.textMuted;
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${growth.xp} / ${growth.getXpForNextLevel()} XP`, canvasWidth / 2, L.xpBarY + 16);
-
-    // ===== 今日承诺标签 =====
-    ctx.fillStyle = UI.textMuted;
-    ctx.font = '600 12px sans-serif';
+    ctx.font = '700 15px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('今日承诺', pad, L.taskGridY - 8);
+    ctx.fillText('今天想一起完成什么', L.actionAreaX + L.spec.actionInset, L.actionAreaY + 24);
+    ctx.fillStyle = UI.textMuted;
+    ctx.font = '11px sans-serif';
+    ctx.fillText('先选一个小目标，剩下的慢慢来', L.actionAreaX + L.spec.actionInset, L.actionAreaY + 42);
 
-    // ===== 承诺槽位（4格）=====
-    this._commitmentSlots = [
-      { x: pad, y: L.taskGridY, w: L.taskCardW, h: L.taskCardH },
-      { x: pad + L.taskCardW + L.taskGap, y: L.taskGridY, w: L.taskCardW, h: L.taskCardH },
-      { x: pad, y: L.taskGridY + L.taskCardH + L.taskGap, w: L.taskCardW, h: L.taskCardH },
-      { x: pad + L.taskCardW + L.taskGap, y: L.taskGridY + L.taskCardH + L.taskGap, w: L.taskCardW, h: L.taskCardH },
-    ];
+    this._commitmentSlots = L.commitmentSlots;
     const commitments = this._goalManager ? this._goalManager.getTodayCommitments() : [];
     this._commitmentSlots.forEach((slot, i) => {
       const commit = commitments[i];
@@ -614,12 +570,14 @@ class HomePage {
       ctx.textAlign = 'center';
       ctx.fillText(`在线 +${this._onlineXP} XP`, canvasWidth - pad - 40, canvasHeight - 16);
     }
-    this._banner.show();
+    this.goalPicker.render(ctx, canvasWidth, canvasHeight);
   }
 
   _drawCommitmentCard(ctx, slot, commit) {
     const goal = commit.goal;
     const isDone = commit.completed;
+    const previewXp = this._goalManager ? this._goalManager.getGoalPreviewXp(goal.id, this._petStateManager ? this._petStateManager.moodValue : 68) : (goal.baseXp || goal.xp || 0);
+    const streakLabel = goal.streakDays > 0 ? `连续${goal.streakDays}天` : '今天开始';
     ctx.save();
     ctx.fillStyle = isDone ? 'rgba(143,214,163,0.2)' : UI.card;
     canvasRoundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
@@ -639,27 +597,45 @@ class HomePage {
     const name = goal.name.length > 9 ? `${goal.name.slice(0, 8)}…` : goal.name;
     ctx.fillText(name, cx, slot.y + 50);
 
+    ctx.fillStyle = 'rgba(255, 179, 71, 0.14)';
+    canvasRoundRect(ctx, slot.x + 10, slot.y + 58, 56, 18, 9);
+    ctx.fill();
+    ctx.fillStyle = UI.text;
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(streakLabel, slot.x + 38, slot.y + 71);
+
     ctx.fillStyle = isDone ? UI.completed : UI.accent;
     ctx.font = '600 11px sans-serif';
-    ctx.fillText(isDone ? '✓ 已完成' : `+${goal.xp} XP`, cx, slot.y + 68);
+    ctx.fillText(isDone ? '✓ 已完成' : `预计 +${previewXp} XP`, cx + 18, slot.y + 71);
 
     ctx.restore();
   }
 
   _drawEmptySlot(ctx, slot, index) {
     ctx.save();
-    ctx.fillStyle = 'rgba(245,176,65,0.08)';
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    canvasRoundRect(ctx, slot.x, slot.y, slot.w, slot.h, 14);
+    ctx.fillStyle = 'rgba(255, 214, 107, 0.16)';
+    canvasRoundRect(ctx, slot.x, slot.y, slot.w, slot.h, 16);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(245,176,65,0.3)';
+    ctx.strokeStyle = 'rgba(255, 179, 71, 0.35)';
+    ctx.lineWidth = 1.2;
+    canvasRoundRect(ctx, slot.x, slot.y, slot.w, slot.h, 16);
     ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.font = '12px sans-serif';
-    ctx.fillStyle = '#8B7355';
+
+    ctx.fillStyle = '#FFF';
+    canvasRoundRect(ctx, slot.x + slot.w / 2 - 18, slot.y + 12, 36, 36, 18);
+    ctx.fill();
+    ctx.fillStyle = UI.text;
+    ctx.font = '18px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('+ 添加目标', slot.x + slot.w / 2, slot.y + slot.h / 2 + 4);
+    ctx.fillText('🎯', slot.x + slot.w / 2, slot.y + 36);
+
+    ctx.fillStyle = UI.text;
+    ctx.font = '700 13px sans-serif';
+    ctx.fillText('添加今日目标', slot.x + slot.w / 2, slot.y + 64);
+    ctx.fillStyle = UI.text;
+    ctx.font = '11px sans-serif';
+    ctx.fillText('可选推荐，也可自定义', slot.x + slot.w / 2, slot.y + 82);
     ctx.restore();
   }
 

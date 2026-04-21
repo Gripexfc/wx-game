@@ -49,7 +49,10 @@
     }
   },
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      { "type": "folder", "value": ".worktrees" },
+      { "type": "folder", "value": "tests" }
+    ],
     "include": []
   },
   "simulatorPluginLibVersion": {},

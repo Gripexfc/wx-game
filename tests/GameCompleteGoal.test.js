@@ -1,4 +1,4 @@
-// js/__tests__/GameCompleteGoal.test.js
+// tests/GameCompleteGoal.test.js
 const { GameTestStub } = require('./main-stub');
 
 let passed = 0, failed = 0;
@@ -11,6 +11,7 @@ function expect(v) {
     toBe: (n) => { if (v !== n) throw new Error(`Expected ${n}, got ${v}`); },
     toBeTruthy: () => { if (!v) throw new Error(`Expected truthy, got ${v}`); },
     toBeFalsy: () => { if (v) throw new Error(`Expected falsy, got ${v}`); },
+    toBeGreaterThan: (n) => { if (v <= n) throw new Error(`Expected > ${n}, got ${v}`); },
   };
 }
 
@@ -65,6 +66,39 @@ test('completeGoal: milestone goal completes when progress reached', () => {
   g.completeGoal(wish.goalId);
   const updated = g.goalManager.getGoalById(goal.id);
   expect(updated.completed).toBe(true);
+});
+
+test('completeGoal: returns dynamic xp breakdown with streak and mood bonus', () => {
+  const g = new GameTestStub({ moodValue: 88 });
+  const goal = g.goalManager.createGoal({
+    name: '每天跑步',
+    type: 'habit',
+    baseXp: 20,
+    icon: '🏃',
+    tag: '运动',
+  });
+  goal.streakDays = 6;
+  g.goalManager.commitGoal(goal.id);
+  const result = g.completeGoal(goal.id);
+  expect(result.xpAwarded).toBe(26);
+  expect(result.xpBreakdown.streakBonus).toBe(4);
+  expect(result.xpBreakdown.moodBonus).toBe(2);
+});
+
+test('completeGoal: committed habit increments streak after completion', () => {
+  const g = new GameTestStub({ moodValue: 70 });
+  const goal = g.goalManager.createGoal({
+    name: '晚上拉伸',
+    type: 'habit',
+    baseXp: 10,
+    icon: '🧘',
+    tag: '健康',
+  });
+  g.goalManager.commitGoal(goal.id);
+  g.completeGoal(goal.id);
+  const updated = g.goalManager.getGoalById(goal.id);
+  expect(updated.streakDays).toBe(1);
+  expect(updated.bestStreakDays).toBe(1);
 });
 
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);

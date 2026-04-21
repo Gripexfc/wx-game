@@ -3,6 +3,8 @@
  */
 const BannerAdManager = require('../ads/BannerAdManager');
 const { canvasRoundRect } = require('../utils/canvas');
+const GoalPickerOverlay = require('./GoalPickerOverlay');
+const { getOnboardingCopy, getOnboardingLayoutSpec } = require('./pageLayoutSpec');
 
 class OnboardingPage {
   constructor(game) {
@@ -11,7 +13,9 @@ class OnboardingPage {
     this.inputValue = '';
     this.confirmEnabled = false;
     this._banner = BannerAdManager.getInstance();
-    this._promptedOnce = false;
+    this.stage = 'naming';
+    this.goalPicker = new GoalPickerOverlay(game);
+    this.copy = getOnboardingCopy();
   }
 
   setLulu(lulu) {
@@ -20,56 +24,113 @@ class OnboardingPage {
 
   /** 触摸开始 */
   onTouchStart(x, y, canvasWidth, canvasHeight) {
-    const layout = this._getLayout(canvasWidth, canvasHeight);
-
-    // 点击输入框区域 -> 打开输入
-    const inputX = layout.cardX + 16;
-    const inputY = layout.cardY + 20;
-    const inputW = layout.cardW - 32;
-    const inputH = 46;
-    if (x >= inputX && x <= inputX + inputW && y >= inputY && y <= inputY + inputH) {
-      this.promptInput();
+    if (this.stage === 'goalPicker') {
+      this._handleGoalPickerAction(this.goalPicker.handleClick(x, y));
       return;
     }
+    const layout = this._getLayout(canvasWidth, canvasHeight);
 
     // 检测确定按钮
-    const btnW = 140;
-    const btnH = 46;
-    const btnX = (canvasWidth - btnW) / 2;
-    const btnY = canvasHeight * 0.68;
+    const btnW = layout.buttonRect.w;
+    const btnH = layout.buttonRect.h;
+    const btnX = layout.buttonRect.x;
+    const btnY = layout.buttonRect.y;
     if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
       if (this.confirmEnabled) {
         this._onConfirm();
+      } else {
+        this.promptInput();
       }
+      return;
+    }
+
+    const cardX = layout.namingCardX;
+    const cardY = layout.namingCardY;
+    const cardW = layout.namingCardW;
+    const cardH = layout.namingCardH;
+    if (x >= cardX && x <= cardX + cardW && y >= cardY && y <= cardY + cardH) {
+      this.promptInput();
     }
   }
 
   /** 键盘输入（微信小游戏通过 showModal 的 editable 实现） */
+  _getDuckName() {
+    return this.inputValue.trim() || this.copy.defaultDuckName;
+  }
+
+  _formatCopy(template, replacements) {
+    return String(template || '').replace(/\{(\w+)\}/g, (match, key) => {
+      return Object.prototype.hasOwnProperty.call(replacements, key) ? replacements[key] : match;
+    });
+  }
+
+  _finishOnboarding() {
+    const name = this.inputValue.trim();
+    if (!name) return;
+    if (this.game.storage && typeof this.game.storage.set === 'function') {
+      this.game.storage.set('lulu_name', name);
+    }
+    if (typeof this.game.onNameSet === 'function') {
+      this.game.onNameSet(name);
+    }
+  }
+
   _onConfirm() {
     const name = this.inputValue.trim();
     if (!name || name.length > 10) return;
-
-    this.game.storage.set('lulu_name', name);
-    this.game.onNameSet(name);
-    this._showGoalCreationGuide();
+    this.stage = 'goalPicker';
+    const duckName = this._getDuckName();
+    this.goalPicker.open({
+      title: this._formatCopy(this.copy.goalPickerTitleTemplate, { duckName }),
+      subtitle: this._formatCopy(this.copy.goalPickerSubtitleTemplate, { duckName }),
+      mandatory: true,
+    });
   }
 
-  _showGoalCreationGuide() {
-    if (typeof wx === 'undefined' || !wx.showActionSheet) return;
-    const recs = this.game.goalManager.getRecommendations();
-    const items = [...recs.map(g => `${g.icon} ${g.name}`), '稍后再说'];
+  _handleGoalPickerAction(action) {
+    if (!action) return;
+    if (action.type === 'goal' && action.goal) {
+      const created = this.game.createAndCommitGoal(action.goal);
+      if (!created) return;
+      if (this.lulu) {
+        this.lulu.say(this._formatCopy(this.copy.goalSuccessTemplate, { duckName: this._getDuckName() }), 120);
+      }
+      this._finishOnboarding();
+      return;
+    }
+    if (action.type === 'custom') {
+      this._promptCustomGoal();
+    }
+  }
 
-    wx.showActionSheet({
-      itemList: items,
+  _promptCustomGoal() {
+    if (typeof wx === 'undefined' || !wx.showModal) return;
+    wx.showModal({
+      title: this.copy.customGoalModalTitle,
+      editable: true,
+      placeholderText: this.copy.customGoalPlaceholder,
+      confirmText: this.copy.customGoalConfirmText,
+      cancelText: this.copy.customGoalCancelText,
       success: (res) => {
-        if (res.tapIndex < recs.length) {
-          const selected = recs[res.tapIndex];
-          const created = this.game.goalManager.createGoal(selected);
-          this.game.goalManager.commitGoal(created.id);
-          if (this.lulu) {
-            this.lulu.say('你的第一个目标！噜噜记住了！', 120);
-          }
+        if (!res.confirm) return;
+        const text = String(res.content || '').trim();
+        if (!text) {
+          if (wx.showToast) wx.showToast({ title: this.copy.customGoalEmptyToast, icon: 'none', duration: 1400 });
+          return;
         }
+        const created = this.game.createAndCommitGoal({
+          name: text,
+          type: 'habit',
+          baseXp: 15,
+          icon: '✨',
+          tag: '自定义',
+          createdFrom: 'custom',
+        });
+        if (!created) return;
+        if (this.lulu) {
+          this.lulu.say(this.copy.customGoalSuccessText, 120);
+        }
+        this._finishOnboarding();
       },
     });
   }
@@ -97,15 +158,16 @@ class OnboardingPage {
     // 方案A：showModal editable
     if (wx.showModal) {
       wx.showModal({
-        title: '给噜噜起个名字',
+        title: this.copy.namePrompt,
         editable: true,
         content: this.inputValue || '',
-        placeholderText: '最多10个字',
-        confirmText: '确定',
-        cancelText: '取消',
+        placeholderText: this.copy.inputModalPlaceholderText,
+        confirmText: this.copy.inputModalConfirmText,
+        cancelText: this.copy.inputModalCancelText,
         success: (res) => {
-          if (res.confirm && validateAndConfirm(res.content)) return;
-          if (wx.showToast) wx.showToast({ title: '名字1-10个字哦', icon: 'none', duration: 1400 });
+          if (!res.confirm) return;
+          if (validateAndConfirm(res.content)) return;
+          if (wx.showToast) wx.showToast({ title: this.copy.inputValidationToast, icon: 'none', duration: 1400 });
         },
         fail: () => {
           // 方案B：键盘兜底
@@ -130,7 +192,7 @@ class OnboardingPage {
       handled = validateAndConfirm(res && res.value);
       cleanup();
       if (wx.hideKeyboard) wx.hideKeyboard();
-      if (!handled && wx.showToast) wx.showToast({ title: '名字1-10个字哦', icon: 'none', duration: 1400 });
+      if (!handled && wx.showToast) wx.showToast({ title: this.copy.inputValidationToast, icon: 'none', duration: 1400 });
     };
     const onComplete = (res) => {
       if (!handled) handled = validateAndConfirm(res && res.value);
@@ -148,15 +210,13 @@ class OnboardingPage {
   }
 
   _getLayout(canvasWidth, canvasHeight) {
-    const cardW = canvasWidth - 60;
-    const cardH = 120;
-    const cardX = 30;
-    const cardY = canvasHeight * 0.52;
-    return { cardW, cardH, cardX, cardY };
+    return getOnboardingLayoutSpec(canvasWidth, canvasHeight);
   }
 
   /** 渲染 */
   render(ctx, canvasWidth, canvasHeight) {
+    this._banner.hide();
+
     // 暖色背景
     const g = ctx.createLinearGradient(0, 0, 0, canvasHeight);
     g.addColorStop(0, '#FFF8EE');
@@ -172,71 +232,103 @@ class OnboardingPage {
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-    // 标题
-    ctx.fillStyle = '#5B4A3A';
-    ctx.font = '700 22px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('欢迎来到噜噜小屋', canvasWidth / 2, canvasHeight * 0.12);
+    const layout = this._getLayout(canvasWidth, canvasHeight);
 
-    // 副标题
+    // 上部品牌区
+    ctx.fillStyle = '#8A7765';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(this.copy.heroEyebrow, canvasWidth / 2, layout.heroTop + 12);
+
+    ctx.fillStyle = '#5B4A3A';
+    ctx.font = '700 28px sans-serif';
+    ctx.fillText(this.copy.brandTitle, canvasWidth / 2, layout.heroTop + 48);
+
     ctx.fillStyle = '#8A7765';
     ctx.font = '14px sans-serif';
-    ctx.fillText('给它起个名字吧', canvasWidth / 2, canvasHeight * 0.18);
+    ctx.fillText(this.copy.subtitle, canvasWidth / 2, layout.heroTop + 78);
 
-    // 绘制噜噜（缩小版 idle）
+    // 中部鸭子视觉区
+    ctx.fillStyle = 'rgba(255, 221, 150, 0.22)';
+    ctx.beginPath();
+    ctx.ellipse(
+      layout.petAreaCenterX,
+      layout.petAreaCenterY,
+      layout.petHaloRadius,
+      layout.petHaloRadius * 0.82,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
     if (this.lulu) {
       this.lulu.update();
-      this.lulu.drawPet(ctx, canvasWidth * 0.2, canvasHeight * 0.22, canvasWidth * 0.6, canvasHeight * 0.38);
+      this.lulu.drawPet(
+        ctx,
+        layout.petAreaCenterX - layout.petDrawWidth / 2,
+        layout.petAreaCenterY - layout.petDrawHeight / 2,
+        layout.petDrawWidth,
+        layout.petDrawHeight
+      );
     }
 
-    // 首次进入自动弹一次输入
-    if (!this._promptedOnce) {
-      this._promptedOnce = true;
-      setTimeout(() => this.promptInput(), 60);
-    }
-
-    // 输入框提示卡片
-    const { cardW, cardH, cardX, cardY } = this._getLayout(canvasWidth, canvasHeight);
-
+    // 下部命名卡
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    canvasRoundRect(ctx, cardX, cardY, cardW, cardH, 16);
+    canvasRoundRect(ctx, layout.namingCardX, layout.namingCardY, layout.namingCardW, layout.namingCardH, 22);
     ctx.fill();
     ctx.strokeStyle = 'rgba(255, 179, 71, 0.4)';
     ctx.lineWidth = 1.5;
-    canvasRoundRect(ctx, cardX, cardY, cardW, cardH, 16);
+    canvasRoundRect(ctx, layout.namingCardX, layout.namingCardY, layout.namingCardW, layout.namingCardH, 22);
     ctx.stroke();
 
-    // 输入框占位区域（实际用 showModal）
+    ctx.fillStyle = '#5B4A3A';
+    ctx.font = '600 16px sans-serif';
+    ctx.fillText(this.copy.namePrompt, canvasWidth / 2, layout.namingCardY + 32);
+
+    ctx.fillStyle = 'rgba(138, 119, 101, 0.72)';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(this.copy.nameReminder, canvasWidth / 2, layout.namingCardY + 50);
+
+    // 输入框占位区域（实际输入仍由 showModal / keyboard 承担）
     ctx.fillStyle = 'rgba(91, 74, 58, 0.1)';
-    canvasRoundRect(ctx, cardX + 16, cardY + 20, cardW - 32, 46, 10);
+    canvasRoundRect(
+      ctx,
+      layout.inputRect.x,
+      layout.inputRect.y,
+      layout.inputRect.w,
+      layout.inputRect.h,
+      layout.inputRect.radius
+    );
     ctx.fill();
     ctx.fillStyle = 'rgba(138, 119, 101, 0.5)';
     ctx.font = '15px sans-serif';
     ctx.textAlign = 'center';
-    const displayName = this.inputValue || '点击这里输入名字';
-    ctx.fillText(displayName, canvasWidth / 2, cardY + 48);
-
-    // 确定按钮
-    const btnW = 140;
-    const btnH = 46;
-    const btnX = (canvasWidth - btnW) / 2;
-    const btnY = canvasHeight * 0.68;
+    const displayName = this.inputValue || this.copy.inputPlaceholder;
+    ctx.fillText(displayName, canvasWidth / 2, layout.inputRect.y + 31);
 
     const btnEnabled = this.confirmEnabled;
     ctx.fillStyle = btnEnabled ? '#FFB347' : 'rgba(255, 179, 71, 0.4)';
-    canvasRoundRect(ctx, btnX, btnY, btnW, btnH, 23);
+    canvasRoundRect(
+      ctx,
+      layout.buttonRect.x,
+      layout.buttonRect.y,
+      layout.buttonRect.w,
+      layout.buttonRect.h,
+      layout.buttonRect.radius
+    );
     ctx.fill();
     ctx.fillStyle = btnEnabled ? '#FFF' : 'rgba(255,255,255,0.7)';
     ctx.font = '600 16px sans-serif';
-    ctx.fillText('确定', canvasWidth / 2, btnY + 29);
+    ctx.fillText(this.copy.primaryButtonText, canvasWidth / 2, layout.buttonRect.y + 31);
 
-    // 提示文字
     ctx.fillStyle = 'rgba(138, 119, 101, 0.6)';
     ctx.font = '11px sans-serif';
-    ctx.fillText('名字将在首页显示 · 最多10个字', canvasWidth / 2, canvasHeight * 0.76);
+    ctx.fillText(this.copy.goalPickerHint, canvasWidth / 2, layout.namingCardY + layout.namingCardH - 8);
 
-    // Banner 广告
-    this._banner.show();
+    if (this.stage === 'goalPicker') {
+      this.goalPicker.render(ctx, canvasWidth, canvasHeight);
+    }
   }
 }
 

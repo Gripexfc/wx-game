@@ -34,7 +34,7 @@ class WishManager {
       id: `wish_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
       goalId: goal.id,
       wishText: this._buildWishText(goal),
-      xp: goal.xp,
+      xp: goal.baseXp || goal.xp,
       extraMoodBoost: 7,
       completed: false,
     }));

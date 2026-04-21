@@ -3,7 +3,7 @@
  */
 
 const { LULU_STAGES, COOL_ACTIONS } = require('../utils/constants');
-const { canvasRoundRect } = require('../utils/canvas');
+const { canvasRoundRect } = require('./utils/canvas');
 
 const DIALOGUE = {
   tap: ['在呢在呢～', '戳我干嘛呀', '摸摸头，会变强', '今天也要加油嗷', '嘿嘿，我在听', '再戳要收费了（开玩笑'],
@@ -88,7 +88,7 @@ class Lulu {
     }
   }
 
-  getStage()
+  say(text, frames) {
     this.sayText = text;
     this.sayTimer = frames;
   }

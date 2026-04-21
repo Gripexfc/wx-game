@@ -1,14 +1,20 @@
-// js/__tests__/main-stub.js
+// tests/main-stub.js
 // 简化 Game 类测试桩（只包含 completeGoal 核心逻辑）
-const Storage = require('../Storage');
-const GoalManager = require('../GoalManager');
-const WishManager = require('../WishManager');
+const Storage = require('../js/Storage');
+const GoalManager = require('../js/GoalManager');
+const WishManager = require('../js/WishManager');
+const GrowthSystem = require('../js/GrowthSystem');
 
 class GameTestStub {
-  constructor() {
+  constructor(options = {}) {
     this.storage = new Storage();
     this.goalManager = new GoalManager();
     this.wishManager = new WishManager();
+    this.growth = new GrowthSystem();
+    this.petStateManager = {
+      moodValue: options.moodValue != null ? options.moodValue : 68,
+      adjustMood: () => {},
+    };
     this.goalManager.setStorage(this.storage);
     this.wishManager.setStorage(this.storage);
   }
@@ -20,17 +26,23 @@ class GameTestStub {
     const commitments = this.goalManager.getTodayCommitments();
     const commit = commitments.find(c => c.goalId === goalId);
     if (!commit || commit.completed) return;
-    this.goalManager.completeCommitment(goalId);
+    const goal = this.goalManager.getGoalById(goalId);
     const wish = this.wishManager.getTodayWishes().find(w => w.goalId === goalId);
+    const extraReward = wish ? 5 : 0;
+    const xpBreakdown = this.goalManager.calculateGoalXp(goalId, this.petStateManager.moodValue, extraReward);
+
+    this.goalManager.completeCommitment(goalId);
     let wishReward = null;
     if (wish) {
       wishReward = this.wishManager.completeWish(wish.id);
     }
-    const goal = this.goalManager.getGoalById(wishReward?.goalId);
-    if (goal && goal.type === 'oneTime') {
-      goal.completed = true;
-    }
-    return { wishReward, goal };
+    this.growth.addXp(xpBreakdown.total);
+    return {
+      wishReward,
+      goal,
+      xpAwarded: xpBreakdown.total,
+      xpBreakdown,
+    };
   }
 }
 module.exports = { GameTestStub };

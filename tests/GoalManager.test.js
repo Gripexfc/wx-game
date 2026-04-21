@@ -1,7 +1,7 @@
 // GoalManager 单元测试（Node环境直接运行）
-// 运行: node js/__tests__/GoalManager.test.js
+// 运行: node tests/GoalManager.test.js
 
-const GoalManager = require('../GoalManager');
+const GoalManager = require('../js/GoalManager');
 
 // 模拟 Storage
 function createGM() {
@@ -27,6 +27,7 @@ function expect(v) {
     toBe: (n) => { if (v !== n) throw new Error(`Expected ${n}, got ${v}`); },
     toBeTruthy: () => { if (!v) throw new Error(`Expected truthy, got ${v}`); },
     toBeFalsy: () => { if (v) throw new Error(`Expected falsy, got ${v}`); },
+    toBeDefined: () => { if (typeof v === 'undefined') throw new Error('Expected value to be defined'); },
     toBeGreaterThanOrEqual: (n) => { if (v < n) throw new Error(`Expected >= ${n}, got ${v}`); },
     toBeLessThanOrEqual: (n) => { if (v > n) throw new Error(`Expected <= ${n}, got ${v}`); },
     toBeGreaterThan: (n) => { if (v <= n) throw new Error(`Expected > ${n}, got ${v}`); },
@@ -38,7 +39,7 @@ console.log('\n=== GoalManager Tests ===\n');
 
 test('createGoal: adds goal to goals array', () => {
   const gm = createGM();
-  const goal = gm.createGoal({ name: '每天跑步30分钟', type: 'habit', xp: 20 });
+  const goal = gm.createGoal({ name: '每天跑步30分钟', type: 'habit', baseXp: 20 });
   expect(goal.id).toBeTruthy();
   expect(goal.name).toBe('每天跑步30分钟');
   expect(goal.type).toBe('habit');
@@ -67,7 +68,7 @@ test('getGoals: returns all non-completed goals', () => {
   const gm = createGM();
   gm.createGoal({ name: 'goal1', type: 'habit', xp: 10 });
   const goal2 = gm.createGoal({ name: 'goal2', type: 'oneTime', xp: 10 });
-  goal2.completed = true; // 手动标记完成
+  goal2.completed = true;
   expect(gm.getGoals().length).toBe(1);
 });
 
@@ -167,6 +168,85 @@ test('getRecommendations: all unique (no duplicate names)', () => {
   const names = recs.map(r => r.name);
   const unique = new Set(names);
   expect(unique.size).toBe(names.length);
+});
+
+test('createGoal: initializes new goal fields for dynamic xp system', () => {
+  const gm = createGM();
+  const goal = gm.createGoal({
+    name: '每天阅读30分钟',
+    type: 'habit',
+    icon: '📚',
+    tag: '学习',
+    baseXp: 18,
+    createdFrom: 'recommended',
+  });
+  expect(goal.baseXp).toBe(18);
+  expect(goal.createdFrom).toBe('recommended');
+  expect(goal.icon).toBe('📚');
+  expect(goal.tag).toBe('学习');
+  expect(goal.streakDays).toBe(0);
+  expect(goal.bestStreakDays).toBe(0);
+  expect(goal.lastCompletedDate).toBe(null);
+});
+
+test('createGoal: reuses existing unfinished goal with same name', () => {
+  const gm = createGM();
+  const first = gm.createGoal({ name: '早睡打卡', type: 'habit', baseXp: 15, createdFrom: 'custom' });
+  const second = gm.createGoal({ name: '早睡打卡', type: 'habit', baseXp: 18, createdFrom: 'custom' });
+  expect(second.id).toBe(first.id);
+  expect(gm.getGoals().length).toBe(1);
+});
+
+test('getGoalPreviewXp: applies streak and mood multipliers for habit goal', () => {
+  const gm = createGM();
+  const goal = gm.createGoal({ name: '跑步', type: 'habit', baseXp: 20 });
+  goal.streakDays = 6;
+  const previewXp = gm.getGoalPreviewXp(goal.id, 88);
+  expect(previewXp).toBe(26);
+});
+
+test('applyGoalCompletion: increments streak for committed and completed habit', () => {
+  const gm = createGM();
+  const goal = gm.createGoal({ name: '阅读', type: 'habit', baseXp: 20 });
+  gm.applyGoalCompletion(goal.id, {
+    committedToday: true,
+    completed: true,
+    date: '2026-04-21',
+  });
+  const updated = gm.getGoalById(goal.id);
+  expect(updated.streakDays).toBe(1);
+  expect(updated.bestStreakDays).toBe(1);
+  expect(updated.lastCompletedDate).toBe('2026-04-21');
+});
+
+test('applyGoalCompletion: resets streak when committed but not completed', () => {
+  const gm = createGM();
+  const goal = gm.createGoal({ name: '冥想', type: 'habit', baseXp: 12 });
+  goal.streakDays = 5;
+  goal.bestStreakDays = 5;
+  gm.applyGoalCompletion(goal.id, {
+    committedToday: true,
+    completed: false,
+    date: '2026-04-21',
+  });
+  const updated = gm.getGoalById(goal.id);
+  expect(updated.streakDays).toBe(0);
+  expect(updated.bestStreakDays).toBe(5);
+});
+
+test('applyGoalCompletion: freezes streak when goal not committed today', () => {
+  const gm = createGM();
+  const goal = gm.createGoal({ name: '拉伸', type: 'habit', baseXp: 10 });
+  goal.streakDays = 3;
+  goal.bestStreakDays = 4;
+  gm.applyGoalCompletion(goal.id, {
+    committedToday: false,
+    completed: false,
+    date: '2026-04-21',
+  });
+  const updated = gm.getGoalById(goal.id);
+  expect(updated.streakDays).toBe(3);
+  expect(updated.bestStreakDays).toBe(4);
 });
 
 test('serialize/deserialize: roundtrip preserves all data', () => {
