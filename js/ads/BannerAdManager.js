@@ -86,19 +86,6 @@ class BannerAdManager {
       // ignore
     }
   }
-
-  /** 销毁实例 */
-  destroy() {
-    if (this._ad) {
-      try {
-        this._ad.destroy();
-      } catch (e) {
-        // ignore
-      }
-      this._ad = null;
-    }
-    this._visible = false;
-  }
 }
 
 module.exports = BannerAdManager;

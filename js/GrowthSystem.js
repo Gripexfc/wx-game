@@ -1,24 +1,24 @@
-const { XP_PER_LEVEL, LULU_STAGES, SCENES, ACCESSORY_TYPES } = require('../utils/constants');
+const { XP_PER_LEVEL, LULU_STAGES, SCENES } = require('../utils/constants');
+const { getTodayString, getYesterdayString } = require('./utils/date');
 
 class GrowthSystem {
   constructor() {
     this.level = 1;
     this.xp = 0;
     this.totalXp = 0;
-    this.loveCoins = 0; // 爱心币
+    this.loveCoins = 0;
+    this.loveStars = 0;
     this.unlockedScenes = ['home'];
     this.unlockedAccessories = [];
     this.consecutiveDays = 0;
     this.lastCheckIn = null;
   }
 
-  // 获取升级所需 XP
   getXpForNextLevel() {
     const index = Math.min(this.level - 1, XP_PER_LEVEL.length - 1);
     return XP_PER_LEVEL[index];
   }
 
-  // 获取当前阶段
   getStage() {
     if (this.level >= 16) return LULU_STAGES.ADULT;
     if (this.level >= 11) return LULU_STAGES.YOUTH;
@@ -26,24 +26,20 @@ class GrowthSystem {
     return LULU_STAGES.BABY;
   }
 
-  // 添加 XP（amount 可为负数，降级时从上一级借经验）
   addXp(amount) {
     if (amount === 0) return { leveled: false, newLevel: this.level };
 
     if (amount > 0) {
       this.xp += amount;
       this.totalXp += amount;
-
-      // 检查是否升级
       while (this.xp >= this.getXpForNextLevel()) {
         this.xp -= this.getXpForNextLevel();
         this.levelUp();
       }
-      return { leveled: this.xp === 0, newLevel: this.level };
+      return { leveled: false, newLevel: this.level };
     }
 
-    // 扣除 XP（可能降级）
-    this.xp += amount; // amount 为负
+    this.xp += amount;
     this.totalXp = Math.max(0, this.totalXp + amount);
     while (this.xp < 0 && this.level > 1) {
       this.level--;
@@ -53,19 +49,14 @@ class GrowthSystem {
     return { leveled: true, newLevel: this.level };
   }
 
-  // 升级
   levelUp() {
     this.level++;
-    this.loveCoins++; // 每级送1个爱心币
-
-    // 检查场景解锁
+    this.loveCoins++;
+    this.loveStars += 1;
     this.checkSceneUnlock();
-
-    // 检查成就
     this.checkAchievements();
   }
 
-  // 检查场景解锁
   checkSceneUnlock() {
     for (const [id, scene] of Object.entries(SCENES)) {
       if (this.level >= scene.unlockLevel && !this.unlockedScenes.includes(id)) {
@@ -74,62 +65,57 @@ class GrowthSystem {
     }
   }
 
-  // 检查成就（简化版）
   checkAchievements() {
-    // 满级成就
-    if (this.level >= 20) {
-      return 'full_level';
-    }
+    if (this.level >= 20) return 'full_level';
     return null;
   }
 
-  // 签到
   checkIn() {
-    const today = this.getTodayString();
-
+    const today = getTodayString();
     if (this.lastCheckIn === today) {
       return { alreadyCheckedIn: true };
     }
-
-    // 检查是否连续
-    const yesterday = this.getYesterdayString();
+    const yesterday = getYesterdayString();
     if (this.lastCheckIn === yesterday) {
       this.consecutiveDays++;
     } else {
       this.consecutiveDays = 1;
     }
-
     this.lastCheckIn = today;
-
-    return {
-      alreadyCheckedIn: false,
-      consecutiveDays: this.consecutiveDays,
-    };
+    return { alreadyCheckedIn: false, consecutiveDays: this.consecutiveDays };
   }
 
-  getTodayString() {
-    const now = new Date();
-    return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-  }
-
-  getYesterdayString() {
-    const now = new Date();
-    now.setDate(now.getDate() - 1);
-    return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-  }
-
-  // 获取经验条进度 (0-1)
   getXpProgress() {
     return this.xp / this.getXpForNextLevel();
   }
 
-  // 序列化
+  // ========== 新增：爱星系统 ==========
+
+  /** 心愿任务完成，奖励爱星（固定+1） */
+  addWishLoveStar() {
+    this.loveStars += 1;
+  }
+
+  /** 消耗爱星（如解锁酷炫动作） */
+  spendLoveStars(amount) {
+    if (this.loveStars < amount) {
+      throw new Error('爱星不足');
+    }
+    this.loveStars -= amount;
+  }
+
+  /** 增加爱星（后台奖励等） */
+  addLoveStars(amount) {
+    this.loveStars += amount;
+  }
+
   serialize() {
     return {
       level: this.level,
       xp: this.xp,
       totalXp: this.totalXp,
       loveCoins: this.loveCoins,
+      loveStars: this.loveStars,
       unlockedScenes: this.unlockedScenes,
       unlockedAccessories: this.unlockedAccessories,
       consecutiveDays: this.consecutiveDays,
@@ -137,13 +123,13 @@ class GrowthSystem {
     };
   }
 
-  // 反序列化
   deserialize(data) {
     if (data) {
       this.level = data.level || 1;
       this.xp = data.xp || 0;
       this.totalXp = data.totalXp || 0;
       this.loveCoins = data.loveCoins || 0;
+      this.loveStars = data.loveStars || 0;
       this.unlockedScenes = data.unlockedScenes || ['home'];
       this.unlockedAccessories = data.unlockedAccessories || [];
       this.consecutiveDays = data.consecutiveDays || 0;

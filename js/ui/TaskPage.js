@@ -1,5 +1,8 @@
-const { COLORS, TASKS } = require('../../utils/constants');
-const BannerAdManager = require('../ads/BannerAdManager');
+const { COLORS, TASKS } = require('../utils/constants');
+const { canvasRoundRect } = require('../utils/canvas');
+
+// 游戏常量
+const CARD_RADIUS = 12;            // 卡片圆角
 
 class TaskPage {
   constructor(game) {
@@ -63,13 +66,13 @@ class TaskPage {
 
     // 背景
     ctx.fillStyle = task.completed ? '#E8F5E9' : '#FFF';
-    this.roundRect(ctx, x, y, width, height, 12);
+    canvasRoundRect(ctx, x, y, width, height, CARD_RADIUS);
     ctx.fill();
 
     // 边框
     ctx.strokeStyle = task.completed ? COLORS.SECONDARY : '#E0E0E0';
     ctx.lineWidth = 2;
-    this.roundRect(ctx, x, y, width, height, 12);
+    canvasRoundRect(ctx, x, y, width, height, CARD_RADIUS);
     ctx.stroke();
 
     // 图标
@@ -112,7 +115,7 @@ class TaskPage {
     ctx.fillStyle = '#FFF';
     ctx.strokeStyle = COLORS.ACCENT;
     ctx.lineWidth = 2;
-    this.roundRect(ctx, x, y, width, height, 12);
+    canvasRoundRect(ctx, x, y, width, height, CARD_RADIUS);
     ctx.fill();
     ctx.stroke();
 
@@ -223,7 +226,7 @@ class TaskPage {
           this.openCustomTaskEditor();
         } else if (!btn.task.completed) {
           // 完成任务
-          this.game.completeTask(btn.task.id);
+          this.game.completeGoal(btn.task.id);
         }
         return true;
       }
@@ -231,25 +234,11 @@ class TaskPage {
 
     // 返回按钮
     if (x < 80 && y < 50) {
-      this.game.showHomePage();
+      this.game.currentPage = 'home';
       return true;
     }
 
     return false;
-  }
-
-  roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
   }
 }
 

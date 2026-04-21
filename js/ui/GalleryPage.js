@@ -29,7 +29,7 @@ class GalleryPage {
     const lulu = this.game.lulu;
     if (lulu) {
       lulu.update();
-      lulu.draw(ctx, canvasWidth / 2, 160);
+      lulu.drawPet(ctx, canvasWidth / 2, 160, canvasWidth, 300);
 
       // 等级名称
       ctx.fillStyle = COLORS.TEXT_PRIMARY;
@@ -78,7 +78,7 @@ class GalleryPage {
   handleClick(x, y, canvasWidth, canvasHeight) {
     // 返回按钮
     if (x < 80 && y < 50) {
-      this.game.showHomePage();
+      this.game.currentPage = 'home';
       return true;
     }
     return false;

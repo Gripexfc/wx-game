@@ -2,7 +2,8 @@
  * 噜噜 · Canvas 伪 3D 虚拟宠物：分层光影、自主行为、点击 / 左右滑翻面、对话气泡
  */
 
-const { LULU_STAGES } = require('../utils/constants');
+const { LULU_STAGES, COOL_ACTIONS } = require('../utils/constants');
+const { canvasRoundRect } = require('../utils/canvas');
 
 const DIALOGUE = {
   tap: ['在呢在呢～', '戳我干嘛呀', '摸摸头，会变强', '今天也要加油嗷', '嘿嘿，我在听', '再戳要收费了（开玩笑'],
@@ -38,6 +39,7 @@ class Lulu {
     this.xp = 0;
     this.stage = LULU_STAGES.BABY;
     this.accessories = [];
+    this.unlockedActions = [];
 
     this.petFrame = 0;
     this.mood = 'idle';
@@ -59,17 +61,36 @@ class Lulu {
     this.todayInteractionCount = 0;
     this.taskNoReactionStreak = 0;
 
-    /** 自动动作状态机 */
-    this.autoAction = null;        // 'cute'|'crawl'|'run'|null
-    this.autoActionTimer = 0;      // 当前动作剩余帧数
-    this.nextAutoActionAt = 240 + Math.floor(Math.random() * 120); // 下次触发帧数
-    this.autoActionPaused = false; // 用户交互中暂停
-    this._autoActionPhase = 0;     // 动作内帧计数（用于动画插值）
+    this.autoAction = null;
+    this.autoActionTimer = 0;
+    this.nextAutoActionAt = 240 + Math.floor(Math.random() * 120);
+    this.autoActionPaused = false;
+    this._autoActionPhase = 0;
 
-    /** 左右滑：负值略向左转（见背），正值向右 */
     this.turn = 0;
     this.turnSmooth = 0;
     this.petDragging = false;
+
+    /** PetStateManager 引用（由 main.js 注入） */
+    this._psm = null;
+
+    /** 酷炫动作状态 */
+    this._coolActionId = null;
+    this._coolActionFrame = 0;
+    this._coolActionCallback = null;
+    this._coolActionDuration = 0;
+  }
+
+  setPetStateManager(psm) {
+    this._psm = psm;
+    if (psm) {
+      this.moodValue = psm.moodValue;
+    }
+  }
+
+  getStage()
+    this.sayText = text;
+    this.sayTimer = frames;
   }
 
   getStage() {
@@ -86,19 +107,6 @@ class Lulu {
     if (s === 'youth') return 1.02;
     if (s === 'child') return 0.96;
     return 0.88;
-  }
-
-  say(text, frames = 110) {
-    this.sayText = text;
-    this.sayTimer = frames;
-  }
-
-  onOwnerFinishedTask(taskName) {
-    const name = taskName || '任务';
-    this.mood = 'happy';
-    this.moodTimer = 55;
-    this.adjustMood(8 + Math.floor(Math.random() * 7));
-    this.triggerRewardInteraction(name);
   }
 
   onTap() {
@@ -134,21 +142,6 @@ class Lulu {
     this.autoActionPaused = false;
   }
 
-  triggerRandomAction() {
-    const lines = ['摇头晃脑', '蹭蹭你', '蹦一下', '伸懒腰', '发呆'];
-    const t = pick(lines);
-    this.legacyAction = t;
-    this.legacyActionTimer = 55;
-    if (t === '伸懒腰') {
-      this.mood = 'sleepy';
-      this.moodTimer = 60;
-      this.say(pick(DIALOGUE.sleepy), 90);
-    } else {
-      this.say(pick(DIALOGUE.happy), 80);
-      this.hopVy = -5;
-    }
-  }
-
   getMoodValue() {
     return Math.max(0, Math.min(100, Math.round(this.moodValue)));
   }
@@ -165,46 +158,6 @@ class Lulu {
     this.moodValue = Math.max(0, Math.min(100, this.moodValue + delta));
   }
 
-  getUnlockedActions() {
-    const pool = [];
-    INTERACTIONS_BY_LEVEL.forEach((bucket) => {
-      if (this.level >= bucket.minLevel) {
-        pool.push(...bucket.actions);
-      }
-    });
-    return pool.length ? pool : ['点点头'];
-  }
-
-  triggerRewardInteraction(taskName) {
-    const baseChance = 0.6;
-    const moodBonus = this.getMoodValue() >= 80 ? 0.2 : 0;
-    const mustTrigger = this.taskNoReactionStreak >= 2;
-    const canTrigger = mustTrigger || Math.random() < (baseChance + moodBonus);
-
-    if (!canTrigger && this.interactionCooldown <= 0) {
-      this.taskNoReactionStreak += 1;
-      this.say(`「${taskName}」完成啦，我记在小本本里了`, 120);
-      return;
-    }
-
-    this.taskNoReactionStreak = 0;
-    this.interactionCooldown = 180;
-    this.todayInteractionCount += 1;
-
-    const action = pick(this.getUnlockedActions());
-    const praise = pick(TASK_PRAISE);
-    this.legacyAction = action;
-    this.legacyActionTimer = 65;
-
-    if (action.includes('跳') || action.includes('转圈')) {
-      this.hopVy = -6.3;
-    } else if (action.includes('蹦')) {
-      this.hopVy = -5.2;
-    }
-
-    this.say(`「${taskName}」完成！${praise}`, 150);
-  }
-
   getActionText() {
     if (this.sayTimer > 0 && this.sayText) return this.sayText;
     if (this.autoAction) {
@@ -216,8 +169,9 @@ class Lulu {
   }
 
   update() {
-    this.petFrame += 1;
-    this.bob = Math.sin(this.petFrame * 0.055) * 3.2;
+    const speedFactor = this._psm ? this._psm.getMoodSpeedFactor() : 1.0;
+    this.petFrame += speedFactor;
+    this.bob = Math.sin(this.petFrame * 0.055) * 3.2 * speedFactor;
 
     this.turnSmooth += (this.turn - this.turnSmooth) * 0.26;
     if (!this.petDragging && Math.abs(this.turn) > 0.008) {
@@ -309,6 +263,10 @@ class Lulu {
     }
 
     ctx.restore();
+
+    if (this._coolActionId) {
+      this._drawCoolAction(ctx, cx, cy, base);
+    }
 
     const headR = base * 0.42;
     const bodyRy = base * 0.42;
@@ -710,7 +668,7 @@ class Lulu {
     ctx.fillStyle = 'rgba(255, 252, 248, 0.98)';
     ctx.strokeStyle = 'rgba(255, 179, 71, 0.5)';
     ctx.lineWidth = 2;
-    this._roundRect(ctx, bx, by, bw, bh, 16);
+    canvasRoundRect(ctx, bx, by, bw, bh, 16);
     ctx.fill();
     ctx.stroke();
 
@@ -748,18 +706,84 @@ class Lulu {
     return out.length ? out : [text];
   }
 
-  _roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
+  // ========== 酷炫动作 ==========
+
+  playCoolAction(actionId, callback) {
+    this._coolActionId = actionId;
+    this._coolActionFrame = 0;
+    this._coolActionCallback = callback || null;
+    const allActions = [
+      ...COOL_ACTIONS.normal,
+      ...COOL_ACTIONS.advanced,
+      ...COOL_ACTIONS.ultimate,
+    ];
+    const action = allActions.find(a => a.id === actionId);
+    this._coolActionDuration = action ? action.duration : 120;
+  }
+
+  _drawCoolAction(ctx, cx, cy, base) {
+    if (!this._coolActionId) return;
+    const progress = this._coolActionFrame / this._coolActionDuration;
+    const id = this._coolActionId;
+
+    ctx.save();
+    if (id === 'heartbeat') {
+      const scale = 1 + Math.sin(progress * Math.PI * 6) * 0.08 * (1 - progress);
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.translate(-cx, -cy);
+    } else if (id === 'dance') {
+      const swing = Math.sin(progress * Math.PI * 4) * 0.1;
+      ctx.translate(cx, cy);
+      ctx.rotate(swing);
+      ctx.translate(-cx, -cy);
+    } else if (id === 'backflip') {
+      const angle = progress * Math.PI * 2;
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.translate(-cx, -cy);
+    } else if (id === 'rainbow') {
+      const alpha = Math.sin(progress * Math.PI) * 0.8;
+      ctx.fillStyle = `rgba(255,100,200,${alpha * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy - base * 0.8, base * 0.6 * progress, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (id === 'takeoff') {
+      const lift = Math.sin(progress * Math.PI) * base * 0.3;
+      ctx.translate(0, -lift);
+    } else if (id === 'supersugar') {
+      const alpha = Math.sin(progress * Math.PI);
+      ctx.fillStyle = `rgba(255,50,100,${alpha * 0.4})`;
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2 + progress * Math.PI;
+        const r = base * 0.5 * (0.5 + progress * 0.5);
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, base * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (id === 'royal') {
+      const glow = Math.sin(progress * Math.PI) * 0.3;
+      ctx.shadowColor = '#FFD700';
+      ctx.shadowBlur = base * 0.5 * progress;
+    } else if (id === 'transform') {
+      const pulse = 1 + Math.sin(progress * Math.PI * 2) * 0.1;
+      ctx.translate(cx, cy);
+      ctx.scale(pulse, pulse);
+      ctx.translate(-cx, -cy);
+      ctx.globalAlpha = 0.5 + Math.sin(progress * Math.PI) * 0.5;
+    } else if (id === 'universe') {
+      const alpha = Math.sin(progress * Math.PI);
+      ctx.fillStyle = `rgba(100,50,200,${alpha * 0.3})`;
+      ctx.fillRect(0, 0, 400, 700);
+    }
+    ctx.restore();
+
+    this._coolActionFrame++;
+    if (this._coolActionFrame >= this._coolActionDuration) {
+      if (this._coolActionCallback) this._coolActionCallback();
+      this._coolActionId = null;
+      this._coolActionFrame = 0;
+    }
   }
 }
 

@@ -2,6 +2,7 @@
  * 首次昵称引导页
  */
 const BannerAdManager = require('../ads/BannerAdManager');
+const { canvasRoundRect } = require('../utils/canvas');
 
 class OnboardingPage {
   constructor(game) {
@@ -50,6 +51,27 @@ class OnboardingPage {
 
     this.game.storage.set('lulu_name', name);
     this.game.onNameSet(name);
+    this._showGoalCreationGuide();
+  }
+
+  _showGoalCreationGuide() {
+    if (typeof wx === 'undefined' || !wx.showActionSheet) return;
+    const recs = this.game.goalManager.getRecommendations();
+    const items = [...recs.map(g => `${g.icon} ${g.name}`), '稍后再说'];
+
+    wx.showActionSheet({
+      itemList: items,
+      success: (res) => {
+        if (res.tapIndex < recs.length) {
+          const selected = recs[res.tapIndex];
+          const created = this.game.goalManager.createGoal(selected);
+          this.game.goalManager.commitGoal(created.id);
+          if (this.lulu) {
+            this.lulu.say('你的第一个目标！噜噜记住了！', 120);
+          }
+        }
+      },
+    });
   }
 
   /** 外部调用：设置输入值（由 main.js 通过 showModal 回调设置） */
@@ -177,16 +199,16 @@ class OnboardingPage {
     const { cardW, cardH, cardX, cardY } = this._getLayout(canvasWidth, canvasHeight);
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    this._roundRect(ctx, cardX, cardY, cardW, cardH, 16);
+    canvasRoundRect(ctx, cardX, cardY, cardW, cardH, 16);
     ctx.fill();
     ctx.strokeStyle = 'rgba(255, 179, 71, 0.4)';
     ctx.lineWidth = 1.5;
-    this._roundRect(ctx, cardX, cardY, cardW, cardH, 16);
+    canvasRoundRect(ctx, cardX, cardY, cardW, cardH, 16);
     ctx.stroke();
 
     // 输入框占位区域（实际用 showModal）
     ctx.fillStyle = 'rgba(91, 74, 58, 0.1)';
-    this._roundRect(ctx, cardX + 16, cardY + 20, cardW - 32, 46, 10);
+    canvasRoundRect(ctx, cardX + 16, cardY + 20, cardW - 32, 46, 10);
     ctx.fill();
     ctx.fillStyle = 'rgba(138, 119, 101, 0.5)';
     ctx.font = '15px sans-serif';
@@ -202,7 +224,7 @@ class OnboardingPage {
 
     const btnEnabled = this.confirmEnabled;
     ctx.fillStyle = btnEnabled ? '#FFB347' : 'rgba(255, 179, 71, 0.4)';
-    this._roundRect(ctx, btnX, btnY, btnW, btnH, 23);
+    canvasRoundRect(ctx, btnX, btnY, btnW, btnH, 23);
     ctx.fill();
     ctx.fillStyle = btnEnabled ? '#FFF' : 'rgba(255,255,255,0.7)';
     ctx.font = '600 16px sans-serif';
@@ -215,20 +237,6 @@ class OnboardingPage {
 
     // Banner 广告
     this._banner.show();
-  }
-
-  _roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
   }
 }
 

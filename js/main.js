@@ -1,26 +1,17 @@
+// main.js — 噜噜养成主游戏入口（重构版）
+
 import './render';
 
 const DESIGN_W = 375;
 const DESIGN_H = 667;
 
-/** 主屏画布（模拟器/子上下文下全局 canvas 可能未就绪） */
 function obtainMainCanvas() {
   try {
-    if (typeof canvas !== 'undefined' && canvas) {
-      return canvas;
-    }
-  } catch (e) {
-    // ignore
-  }
-  if (typeof GameGlobal !== 'undefined' && GameGlobal && GameGlobal.canvas) {
-    return GameGlobal.canvas;
-  }
+    if (typeof canvas !== 'undefined' && canvas) return canvas;
+  } catch (e) {}
+  if (typeof GameGlobal !== 'undefined' && GameGlobal && GameGlobal.canvas) return GameGlobal.canvas;
   if (typeof wx !== 'undefined' && typeof wx.createCanvas === 'function') {
-    try {
-      return wx.createCanvas();
-    } catch (e) {
-      console.error('wx.createCanvas failed:', e);
-    }
+    try { return wx.createCanvas(); } catch (e) {}
   }
   return null;
 }
@@ -29,22 +20,28 @@ function scheduleNextFrame(fn) {
   if (typeof wx !== 'undefined' && typeof wx.requestAnimationFrame === 'function') {
     return wx.requestAnimationFrame(fn);
   }
-  if (typeof requestAnimationFrame === 'function') {
-    return requestAnimationFrame(fn);
-  }
-  return setTimeout(fn, 16);
+  if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(fn);
+  return setTimeout(fn, FRAME_FALLBACK_MS);
 }
 
 const Lulu = require('./Lulu');
+
+// 游戏常量
+const ONLINE_XP_INTERVAL = 60000;    // 在线XP：每分钟+1
+const COOL_ACTION_PROB = 0.3;       // 酷炫动作触发概率30%
+const FRAME_FALLBACK_MS = 16;        // requestAnimationFrame兜底帧时长
+
 const TaskManager = require('./TaskManager');
 const GrowthSystem = require('./GrowthSystem');
 const Storage = require('./Storage');
+const GoalManager = require('./GoalManager');
+const WishManager = require('./WishManager');
+const PetStateManager = require('./PetStateManager');
+const { daysBetween } = require('./utils/date');
 const HomePage = require('./ui/HomePage');
 const OnboardingPage = require('./ui/OnboardingPage');
 
-const STORAGE_KEYS_LULU = {
-  LULU_NAME: 'lulu_name',
-};
+const STORAGE_KEYS_LULU = { LULU_NAME: 'lulu_name' };
 
 class Game {
   constructor() {
@@ -58,15 +55,33 @@ class Game {
     this.taskManager = new TaskManager();
     this.growth = new GrowthSystem();
 
+    // === 新增系统 ===
+    this.goalManager = new GoalManager();
+    this.goalManager.setStorage(this.storage);
+    this.wishManager = new WishManager();
+    this.wishManager.setStorage(this.storage);
+    this.petStateManager = new PetStateManager();
+    this.petStateManager.setStorage(this.storage);
+
     this.homePage = new HomePage(this);
     this.onboardingPage = new OnboardingPage(this);
 
     this.currentPage = 'home';
+    this._onlineXP = 0;
+    this._lastOnlineXPTime = Date.now();
 
     this.loadData();
     this.homePage.setLulu(this.lulu);
+    this.homePage.setGameSystems({
+      goalManager: this.goalManager,
+      wishManager: this.wishManager,
+      petStateManager: this.petStateManager,
+      growth: this.growth,
+      onCompleteGoal: (goalId) => this.completeGoal(goalId),
+      onCommitGoal: (goalId) => { /* 承诺目标 */ },
+      onCreateGoal: (goal) => { /* 创建目标 */ },
+    });
 
-    // 初始化 Banner 广告（占位 ID 不加载）
     const BannerAdManager = require('./ads/BannerAdManager');
     BannerAdManager.getInstance().init('YOUR_BANNER_AD_UNIT_ID');
 
@@ -87,99 +102,66 @@ class Game {
         const dpr = sys.pixelRatio || 1;
         const cssW = sys.windowWidth || DESIGN_W;
         const cssH = sys.windowHeight || DESIGN_H;
-        const physW = Math.floor(cssW * dpr);
-        const physH = Math.floor(cssH * dpr);
-        c.width = physW;
-        c.height = physH;
+        c.width = Math.floor(cssW * dpr);
+        c.height = Math.floor(cssH * dpr);
         this.ctx.scale(dpr, dpr);
         this._cssWidth = cssW;
         this._cssHeight = cssH;
       } catch (e) {
-        c.width = DESIGN_W;
-        c.height = DESIGN_H;
-        this._cssWidth = DESIGN_W;
-        this._cssHeight = DESIGN_H;
+        c.width = DESIGN_W; c.height = DESIGN_H;
+        this._cssWidth = DESIGN_W; this._cssHeight = DESIGN_H;
       }
       this._canvasSized = true;
     } else if (!this._canvasSized) {
-      c.width = DESIGN_W;
-      c.height = DESIGN_H;
-      this._cssWidth = DESIGN_W;
-      this._cssHeight = DESIGN_H;
+      c.width = DESIGN_W; c.height = DESIGN_H;
+      this._cssWidth = DESIGN_W; this._cssHeight = DESIGN_H;
       this._canvasSized = true;
     }
   }
 
   setupTouchHandlers() {
     if (typeof wx === 'undefined' || !wx.onTouchStart) return;
-
-    const getCssSize = () => ({
-      w: this._cssWidth || this.canvas.width,
-      h: this._cssHeight || this.canvas.height,
-    });
-
     wx.onTouchStart((res) => {
       if (!res.touches || res.touches.length === 0) return;
       const touch = res.touches[0];
       this._activeTouchId = touch.identifier != null ? touch.identifier : 0;
       if (!this.canvas) return;
-      const { w, h } = getCssSize();
       this.handleClick(touch.clientX, touch.clientY);
     });
-
     wx.onTouchMove((res) => {
       if (!this.canvas || !res.touches || res.touches.length === 0) return;
       const touch = res.touches[0];
-      if (this._activeTouchId != null && touch.identifier != null && touch.identifier !== this._activeTouchId) {
-        return;
-      }
-      const { w, h } = getCssSize();
+      if (this._activeTouchId != null && touch.identifier != null && touch.identifier !== this._activeTouchId) return;
+      const w = this._cssWidth || this.canvas.width;
+      const h = this._cssHeight || this.canvas.height;
       this.homePage.onTouchMove(touch.clientX, touch.clientY, w, h);
     });
-
     const end = (res) => {
-      if (!this.canvas) {
-        this._activeTouchId = null;
-        return;
-      }
-      let x = 0;
-      let y = 0;
+      if (!this.canvas) { this._activeTouchId = null; return; }
+      let x = 0, y = 0;
       if (res.changedTouches && res.changedTouches.length > 0) {
         const c = res.changedTouches[0];
-        if (this._activeTouchId != null && c.identifier != null && c.identifier !== this._activeTouchId) {
-          return;
-        }
-        x = c.clientX;
-        y = c.clientY;
+        if (this._activeTouchId != null && c.identifier != null && c.identifier !== this._activeTouchId) return;
+        x = c.clientX; y = c.clientY;
       } else if (res.touches && res.touches.length > 0) {
-        x = res.touches[0].clientX;
-        y = res.touches[0].clientY;
+        x = res.touches[0].clientX; y = res.touches[0].clientY;
       }
-      const { w, h } = getCssSize();
+      const w = this._cssWidth || this.canvas.width;
+      const h = this._cssHeight || this.canvas.height;
       this.homePage.onTouchEnd(x, y, w, h);
       this._activeTouchId = null;
     };
-
     wx.onTouchEnd(end);
-    wx.onTouchCancel(() => {
-      this.homePage.onTouchCancel();
-      this._activeTouchId = null;
-    });
+    wx.onTouchCancel(() => { this.homePage.onTouchCancel(); this._activeTouchId = null; });
   }
 
   handleClick(x, y) {
     if (!this.canvas) return;
-    const canvasWidth = this._cssWidth || this.canvas.width;
-    const canvasHeight = this._cssHeight || this.canvas.height;
+    const w = this._cssWidth || this.canvas.width;
+    const h = this._cssHeight || this.canvas.height;
     switch (this.currentPage) {
-      case 'home':
-        this.homePage.handleClick(x, y, canvasWidth, canvasHeight);
-        break;
-      case 'onboarding':
-        if (this.onboardingPage) {
-          this.onboardingPage.onTouchStart(x, y, canvasWidth, canvasHeight);
-        }
-        break;
+      case 'home': this.homePage.handleClick(x, y, w, h); break;
+      case 'onboarding': if (this.onboardingPage) this.onboardingPage.onTouchStart(x, y, w, h); break;
     }
   }
 
@@ -193,8 +175,13 @@ class Game {
     this.homePage.setLulu(this.lulu);
   }
 
+  _getMilestoneDialogue(milestone) {
+    const { LULU_DIALOGUES } = require('../utils/constants');
+    const templates = LULU_DIALOGUES.milestone[milestone];
+    return templates[Math.floor(Math.random() * templates.length)];
+  }
+
   loadData() {
-    // 检测昵称：未设置则显示引导页
     const name = this.storage.get(STORAGE_KEYS_LULU.LULU_NAME);
     if (!name || !String(name).trim()) {
       this.currentPage = 'onboarding';
@@ -202,78 +189,186 @@ class Game {
       return;
     }
 
-    // 原有加载逻辑
+    // 旧数据兼容：加载 lulu_data
     const luluData = this.storage.get('lulu_data');
     if (luluData) {
       this.lulu.level = luluData.level || 1;
       this.lulu.xp = luluData.xp || 0;
       this.lulu.moodValue = Number.isFinite(luluData.moodValue) ? luluData.moodValue : 68;
       this.lulu.todayInteractionCount = Number.isFinite(luluData.todayInteractionCount) ? luluData.todayInteractionCount : 0;
+      this.lulu.unlockedActions = luluData.unlockedActions || [];
     }
 
+    // 旧数据兼容：加载 task_data
     const taskData = this.storage.get('task_data');
     if (taskData) {
       this.taskManager.deserialize(taskData);
     }
     this.taskManager.checkDailyReset();
 
+    // 加载 growth_data
     const growthData = this.storage.get('growth_data');
     if (growthData) {
       this.growth.deserialize(growthData);
     }
     this.lulu.level = this.growth.level;
+
+    // === 加载新系统数据 ===
+    this.goalManager.deserialize(this.storage.get('goal_data'));
+    this.goalManager.checkDailyReset();
+    this.wishManager.deserialize(this.storage.get('wish_data'));
+    this.wishManager.checkDailyReset();
+    this.petStateManager.deserialize(this.storage.get('pet_state_data'));
+
+    // 注入 PetStateManager 到 Lulu
+    this.lulu.setPetStateManager(this.petStateManager);
+
+    // === 日终结算 ===
+    const today = this.goalManager.getTodayString();
+    const lastActive = this.goalManager.lastResetDate || today;
+    const disconnectDays = daysBetween(lastActive, today);
+
+    if (disconnectDays > 0) {
+      for (let d = 1; d <= disconnectDays; d++) {
+        const isLastDay = (d === disconnectDays);
+        if (isLastDay) {
+          const commitments = this.goalManager.getTodayCommitments();
+          const completedCount = commitments.filter(c => c.completed).length;
+          this.petStateManager.settleDaily(1, {
+            completedCount,
+            totalCommitments: commitments.length,
+            consecutiveDays: this.petStateManager.consecutiveDays,
+          });
+        } else {
+          this.petStateManager.settleDaily(1, {
+            completedCount: 0,
+            totalCommitments: 0,
+            consecutiveDays: 0,
+          });
+        }
+      }
+
+      // 断联问候语
+      if (disconnectDays >= 1) {
+        const greeting = this.petStateManager.getAbsenceGreeting(disconnectDays);
+        if (greeting) this.lulu.say(greeting, 120);
+      }
+
+      // 里程碑检测
+      const milestone = this.petStateManager.checkMilestone();
+      if (milestone) {
+        this.lulu.say(this._getMilestoneDialogue(milestone), 150);
+      }
+    }
+
+    // 同步宠物心情
+    this.lulu.moodValue = this.petStateManager.moodValue;
+
+    // 生成今日心愿（如有目标）
+    if (this.goalManager.getGoals().length > 0 && this.wishManager.getTodayWishes().length === 0) {
+      this.wishManager.generateDailyWishes(this.goalManager.getGoals());
+    }
   }
 
   saveData() {
     this.storage.set('lulu_data', {
       level: this.lulu.level,
       xp: this.lulu.xp,
-      moodValue: this.lulu.getMoodValue ? this.lulu.getMoodValue() : 68,
+      moodValue: this.petStateManager.moodValue,
       todayInteractionCount: this.lulu.todayInteractionCount || 0,
+      unlockedActions: this.lulu.unlockedActions || [],
     });
     this.storage.set('task_data', this.taskManager.serialize());
     this.storage.set('growth_data', this.growth.serialize());
+    this.storage.set('goal_data', this.goalManager.serialize());
+    this.storage.set('wish_data', this.wishManager.serialize());
+    this.storage.set('pet_state_data', this.petStateManager.serialize());
   }
 
-  completeTask(taskId) {
-    const result = this.taskManager.toggleTask(taskId);
-    if (result.xpDelta !== 0) {
-      const xpResult = this.growth.addXp(result.xpDelta);
-      if (result.xpDelta > 0 && result.completed) {
-        // 完成任务奖励
-        if (this.lulu.onOwnerFinishedTask) {
-          const task = this.taskManager.getTodayTasks().find(t => t.id === taskId);
-          this.lulu.onOwnerFinishedTask(task?.name || '任务');
+  /** 完成目标（今日承诺） */
+  completeGoal(goalId) {
+    const commitments = this.goalManager.getTodayCommitments();
+    const commit = commitments.find(c => c.goalId === goalId);
+    if (!commit || commit.completed) return;
+
+    this.goalManager.completeCommitment(goalId);
+
+    // 查找对应心愿并完成
+    const wish = this.wishManager.getTodayWishes().find(w => w.goalId === goalId);
+    let wishReward = null;
+    if (wish) {
+      wishReward = this.wishManager.completeWish(wish.id);
+    }
+
+    // 目标状态更新（从 WishManager 移入此处）
+    const goal = this.goalManager.getGoalById(wish.goalId);
+    if (goal) {
+      goal.lastDoneAt = this.goalManager.getTodayString();
+      if (goal.type === 'milestone') {
+        goal.currentProgress = Math.min(
+          (goal.currentProgress || 0) + 1,
+          goal.totalProgress
+        );
+        if (goal.currentProgress >= goal.totalProgress) {
+          goal.completed = true;
         }
       }
-      if (result.xpDelta < 0) {
-        // 取消完成：等级可能回退
-        this.lulu.level = this.growth.level;
-      } else if (xpResult.leveled) {
-        this.lulu.level = xpResult.newLevel;
+      if (goal.type === 'oneTime') {
+        goal.completed = true;
       }
-      this.saveData();
+      if (wishReward) {
+        wishReward.goalCompleted = goal.completed;
+      }
     }
+
+    // XP结算（单次上限30）
+    const baseXp = goal ? goal.xp : 15;
+    const moodMult = this.petStateManager.getMoodXPMultiplier();
+    const xp = Math.min(30, Math.round((baseXp + (wishReward ? 5 : 0)) * moodMult));
+
+    const levelBefore = this.growth.level;
+    this.growth.addXp(xp);
+    if (this.growth.level > this.lulu.level) {
+      this.lulu.level = this.growth.level;
+    }
+    if (this.growth.level > levelBefore) {
+      this.lulu.say('升级了噜噜！', 100);
+    }
+
+    // 心情更新
+    const moodBoost = wishReward ? wishReward.moodBoost : (8 + Math.floor(Math.random() * 7));
+    this.petStateManager.adjustMood(moodBoost);
+    this.lulu.moodValue = this.petStateManager.moodValue;
+
+    // 爱星奖励（心愿任务）
+    if (wishReward && wishReward.loveStar) {
+      this.growth.addWishLoveStar();
+    }
+
+    // 宠物见证反馈
+    this.lulu.onGoalCompleted(goal ? goal.name : '目标');
+
+    // 30%概率触发酷炫动作
+    if (Math.random() < COOL_ACTION_PROB) {
+      const actions = this.lulu.unlockedActions || [];
+      if (actions.length > 0) {
+        const action = actions[Math.floor(Math.random() * actions.length)];
+        this.lulu.playCoolAction(action.id);
+      }
+    }
+
+    this.saveData();
   }
 
   onLuluInteraction() {
     if (typeof wx !== 'undefined' && wx.vibrateShort) {
-      try {
-        wx.vibrateShort({ type: 'light' });
-      } catch (e) {
-        // ignore
-      }
+      try { wx.vibrateShort({ type: 'light' }); } catch (e) {}
     }
   }
 
   loop() {
-    if (!this.canvas || !this.ctx) {
-      this._bindMainCanvas();
-    }
-    if (!this.canvas || !this.ctx) {
-      scheduleNextFrame(() => this.loop());
-      return;
-    }
+    if (!this.canvas || !this.ctx) this._bindMainCanvas();
+    if (!this.canvas || !this.ctx) { scheduleNextFrame(() => this.loop()); return; }
     this.update();
     this.render();
     scheduleNextFrame(() => this.loop());
@@ -281,21 +376,33 @@ class Game {
 
   update() {
     this.lulu.update();
+
+    // 在线计时：每分钟+1 XP
+    const now = Date.now();
+    if (this._lastOnlineXPTime && now - this._lastOnlineXPTime >= ONLINE_XP_INTERVAL) {
+      const before = this.growth.level;
+      this.growth.addXp(1);
+      this._onlineXP += 1;
+      this._lastOnlineXPTime = now;
+      if (this.growth.level > before) {
+        this.lulu.level = this.growth.level;
+        this.lulu.say('升级了噜噜！', 100);
+      }
+      if (this._onlineXP > 0 && this._onlineXP % 5 === 0) {
+        if (typeof wx !== 'undefined' && wx.showToast) {
+          wx.showToast({ title: `噜噜陪你涨了 +${this._onlineXP} XP`, icon: 'none', duration: 1500 });
+        }
+      }
+    }
   }
 
   render() {
     if (!this.canvas || !this.ctx) return;
-    const canvasWidth = this._cssWidth || this.canvas.width;
-    const canvasHeight = this._cssHeight || this.canvas.height;
+    const w = this._cssWidth || this.canvas.width;
+    const h = this._cssHeight || this.canvas.height;
     switch (this.currentPage) {
-      case 'home':
-        this.homePage.render(this.ctx, canvasWidth, canvasHeight);
-        break;
-      case 'onboarding':
-        if (this.onboardingPage) {
-          this.onboardingPage.render(this.ctx, canvasWidth, canvasHeight);
-        }
-        break;
+      case 'home': this.homePage.render(this.ctx, w, h); break;
+      case 'onboarding': if (this.onboardingPage) this.onboardingPage.render(this.ctx, w, h); break;
     }
   }
 }
