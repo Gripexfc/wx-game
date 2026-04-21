@@ -1,3 +1,3 @@
-import Main from './js/main';
+import Game from './js/main';
 
-new Main();
+new Game();

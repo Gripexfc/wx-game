@@ -11,7 +11,7 @@ const LULU_STAGES = {
 // 任务配置
 const TASKS = {
   FITNESS: { id: 'fitness', name: '健身', icon: '🏃', xp: 20, desc: '完成30分钟运动' },
-  EAT: { id: 'eat', name: '吃饭', icon: '🍽️', xp: 15, desc: '记录正餐' },
+  EAT: { id: 'eat', name: '好好吃饭', icon: '🍽️', xp: 15, desc: '认真吃好每一餐' },
   READ: { id: 'read', name: '阅读', icon: '📚', xp: 20, desc: '阅读30分钟' },
   SLEEP: { id: 'sleep', name: '睡眠', icon: '😴', xp: 25, desc: '早睡打卡(22:00前)' },
 };

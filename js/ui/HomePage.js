@@ -194,6 +194,8 @@ class HomePage {
       const task = t.task;
       if (task.isPlaceholder) {
         this.openDailyEditor();
+      } else if (task.isCustom) {
+        this.openCustomTaskMenu(task);
       } else if (!task.completed) {
         this.game.completeTask(task.id);
       }
@@ -239,12 +241,61 @@ class HomePage {
       });
     };
 
-    if (wx.showModal) {
+    const openKeyboardEditor = () => {
+      if (!wx.showKeyboard) {
+        fallbackSheet();
+        return;
+      }
+
+      let handled = false;
+      const cleanup = () => {
+        if (wx.offKeyboardConfirm) wx.offKeyboardConfirm(onConfirm);
+        if (wx.offKeyboardComplete) wx.offKeyboardComplete(onComplete);
+      };
+      const finish = (text) => {
+        const value = String(text || '').trim();
+        if (value) {
+          apply(value);
+          handled = true;
+        }
+      };
+      const onConfirm = (res) => {
+        finish(res && res.value);
+        cleanup();
+        if (wx.hideKeyboard) wx.hideKeyboard();
+      };
+      const onComplete = (res) => {
+        if (!handled) finish(res && res.value);
+        cleanup();
+        if (!handled && !prev) fallbackSheet();
+      };
+
+      if (wx.onKeyboardConfirm) wx.onKeyboardConfirm(onConfirm);
+      if (wx.onKeyboardComplete) wx.onKeyboardComplete(onComplete);
+
+      wx.showKeyboard({
+        defaultValue: prev || '',
+        maxLength: 18,
+        multiple: false,
+        confirmType: 'done',
+        success: () => {},
+        fail: () => {
+          cleanup();
+          fallbackSheet();
+        },
+      });
+    };
+
+    const openEditableModal = () => {
+      if (!wx.showModal) {
+        openKeyboardEditor();
+        return;
+      }
       wx.showModal({
-        title: '今日小目标',
+        title: '编辑今日小目标',
         content: prev || '',
         editable: true,
-        placeholderText: '写一句给自己的话，不改就沿用上次',
+        placeholderText: '输入任务名（最多18字）',
         confirmText: '保存',
         cancelText: '取消',
         success: (res) => {
@@ -253,15 +304,36 @@ class HomePage {
             if (text) {
               apply(text);
             } else if (!prev) {
-              fallbackSheet();
+              openKeyboardEditor();
             }
           }
         },
-        fail: () => fallbackSheet(),
+        fail: () => openKeyboardEditor(),
       });
-    } else {
-      fallbackSheet();
+    };
+
+    // 先尝试可编辑弹窗，失败再降级键盘
+    openEditableModal();
+  }
+
+  openCustomTaskMenu(task) {
+    if (typeof wx === 'undefined' || !wx.showActionSheet) {
+      if (!task.completed) this.game.completeTask(task.id);
+      return;
     }
+    wx.showActionSheet({
+      itemList: task.completed ? ['编辑任务名'] : ['编辑任务名', '完成任务'],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          this.openDailyEditor();
+        } else if (res.tapIndex === 1 && !task.completed) {
+          this.game.completeTask(task.id);
+        }
+      },
+      fail: () => {
+        if (!task.completed) this.game.completeTask(task.id);
+      },
+    });
   }
 
   /** 兼容旧入口：单点（无 move/end 时） */

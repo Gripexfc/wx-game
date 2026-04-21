@@ -1,4 +1,4 @@
-const { COLORS, LULU_STAGES, SCENES } = require('../utils/constants');
+const { COLORS, LULU_STAGES, SCENES } = require('../../utils/constants');
 
 class GalleryPage {
   constructor(game) {

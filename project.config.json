@@ -1,15 +1,60 @@
 {
-  "description": "项目配置文件",
+  "description": "噜噜成长 · 微信小游戏项目配置",
   "setting": {
     "urlCheck": false,
     "es6": true,
-    "postcss": false,
+    "postcss": true,
     "minified": true,
     "newFeature": true,
-    "enhance": false
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "enhance": false,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    },
+    "disableUseStrict": false,
+    "useCompilerPlugins": false
   },
   "compileType": "game",
-  "libVersion": "latest",
-  "appid": "wxb9bccf507718cc64",
-  "projectname": "lulu-growth"
+  "libVersion": "3.5.8",
+  "appid": "wx7d94c6769c87a3cd",
+  "projectname": "lulu-growth",
+  "condition": {
+    "search": {
+      "current": -1,
+      "list": []
+    },
+    "conversation": {
+      "current": -1,
+      "list": []
+    },
+    "game": {
+      "current": -1,
+      "list": []
+    },
+    "miniprogram": {
+      "current": -1,
+      "list": []
+    }
+  },
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "simulatorPluginLibVersion": {},
+  "editorSetting": {
+    "tabIndent": "insertSpaces",
+    "tabSize": 2
+  }
 }

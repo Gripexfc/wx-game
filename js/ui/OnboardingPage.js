@@ -10,6 +10,7 @@ class OnboardingPage {
     this.inputValue = '';
     this.confirmEnabled = false;
     this._banner = BannerAdManager.getInstance();
+    this._promptedOnce = false;
   }
 
   setLulu(lulu) {
@@ -18,6 +19,18 @@ class OnboardingPage {
 
   /** 触摸开始 */
   onTouchStart(x, y, canvasWidth, canvasHeight) {
+    const layout = this._getLayout(canvasWidth, canvasHeight);
+
+    // 点击输入框区域 -> 打开输入
+    const inputX = layout.cardX + 16;
+    const inputY = layout.cardY + 20;
+    const inputW = layout.cardW - 32;
+    const inputH = 46;
+    if (x >= inputX && x <= inputX + inputW && y >= inputY && y <= inputY + inputH) {
+      this.promptInput();
+      return;
+    }
+
     // 检测确定按钮
     const btnW = 140;
     const btnH = 46;
@@ -47,38 +60,77 @@ class OnboardingPage {
 
   /** 外部调用：打开输入弹窗 */
   promptInput() {
-    if (typeof wx === 'undefined' || !wx.showModal) return;
+    if (typeof wx === 'undefined') return;
 
-    const game = this.game;
-    wx.showModal({
-      title: '给噜噜起个名字',
-      editable: true,
-      placeholderText: '最多10个字',
-      confirmText: '确定',
-      cancelText: '取消',
-      success: (res) => {
-        if (res.confirm) {
-          const val = (res.content != null ? String(res.content) : '').trim();
-          if (val && val.length <= 10) {
-            this.setInputValue(val);
-            this._onConfirm();
-          } else {
-            // 字数超限或为空，提示重输
-            wx.showToast({ title: '名字1-10个字哦', icon: 'none', duration: 1500 });
-            setTimeout(() => this.promptInput(), 1600);
-          }
-        } else {
-          // 取消也要求填写
-          wx.showToast({ title: '名字不能为空哦', icon: 'none', duration: 1500 });
-          setTimeout(() => this.promptInput(), 1600);
-        }
-      },
-      fail: () => {
-        // fallback：直接用默认昵称
-        this.setInputValue('主人');
+    const validateAndConfirm = (raw) => {
+      const val = String(raw != null ? raw : '').trim();
+      if (val && val.length <= 10) {
+        this.setInputValue(val);
         this._onConfirm();
-      },
+        return true;
+      }
+      return false;
+    };
+
+    // 方案A：showModal editable
+    if (wx.showModal) {
+      wx.showModal({
+        title: '给噜噜起个名字',
+        editable: true,
+        content: this.inputValue || '',
+        placeholderText: '最多10个字',
+        confirmText: '确定',
+        cancelText: '取消',
+        success: (res) => {
+          if (res.confirm && validateAndConfirm(res.content)) return;
+          if (wx.showToast) wx.showToast({ title: '名字1-10个字哦', icon: 'none', duration: 1400 });
+        },
+        fail: () => {
+          // 方案B：键盘兜底
+          this._promptByKeyboard(validateAndConfirm);
+        },
+      });
+      return;
+    }
+
+    // 方案B：键盘兜底
+    this._promptByKeyboard(validateAndConfirm);
+  }
+
+  _promptByKeyboard(validateAndConfirm) {
+    if (typeof wx === 'undefined' || !wx.showKeyboard) return;
+    let handled = false;
+    const cleanup = () => {
+      if (wx.offKeyboardConfirm) wx.offKeyboardConfirm(onConfirm);
+      if (wx.offKeyboardComplete) wx.offKeyboardComplete(onComplete);
+    };
+    const onConfirm = (res) => {
+      handled = validateAndConfirm(res && res.value);
+      cleanup();
+      if (wx.hideKeyboard) wx.hideKeyboard();
+      if (!handled && wx.showToast) wx.showToast({ title: '名字1-10个字哦', icon: 'none', duration: 1400 });
+    };
+    const onComplete = (res) => {
+      if (!handled) handled = validateAndConfirm(res && res.value);
+      cleanup();
+    };
+    if (wx.onKeyboardConfirm) wx.onKeyboardConfirm(onConfirm);
+    if (wx.onKeyboardComplete) wx.onKeyboardComplete(onComplete);
+    wx.showKeyboard({
+      defaultValue: this.inputValue || '',
+      maxLength: 10,
+      multiple: false,
+      confirmType: 'done',
+      fail: () => cleanup(),
     });
+  }
+
+  _getLayout(canvasWidth, canvasHeight) {
+    const cardW = canvasWidth - 60;
+    const cardH = 120;
+    const cardX = 30;
+    const cardY = canvasHeight * 0.52;
+    return { cardW, cardH, cardX, cardY };
   }
 
   /** 渲染 */
@@ -115,11 +167,14 @@ class OnboardingPage {
       this.lulu.drawPet(ctx, canvasWidth * 0.2, canvasHeight * 0.22, canvasWidth * 0.6, canvasHeight * 0.38);
     }
 
+    // 首次进入自动弹一次输入
+    if (!this._promptedOnce) {
+      this._promptedOnce = true;
+      setTimeout(() => this.promptInput(), 60);
+    }
+
     // 输入框提示卡片
-    const cardW = canvasWidth - 60;
-    const cardH = 120;
-    const cardX = 30;
-    const cardY = canvasHeight * 0.52;
+    const { cardW, cardH, cardX, cardY } = this._getLayout(canvasWidth, canvasHeight);
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     this._roundRect(ctx, cardX, cardY, cardW, cardH, 16);
