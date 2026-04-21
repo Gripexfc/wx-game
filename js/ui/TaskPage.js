@@ -1,8 +1,9 @@
-const { COLORS, TASKS } = require('../utils/constants');
+const { COLORS, TASKS } = require('../../utils/constants');
 const { canvasRoundRect } = require('../utils/canvas');
+const BannerAdManager = require('../ads/BannerAdManager');
 
 // 游戏常量
-const CARD_RADIUS = 12;            // 卡片圆角
+const CARD_RADIUS = 12; // 卡片圆角
 
 class TaskPage {
   constructor(game) {
