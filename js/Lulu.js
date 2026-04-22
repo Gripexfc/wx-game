@@ -756,15 +756,7 @@ class Lulu {
     }
     this._drawLevelAura(ctx, cx, cy, base);
 
-    const headR = base * 0.42;
-    const bodyRy = base * 0.42;
-    const hy = showBack ? -bodyRy * 0.72 - headR * 0.06 : -bodyRy * 0.75;
-    const squash = 1 + Math.sin(this.petFrame * 0.08) * 0.02 + (this.mood === 'happy' ? 0.03 : 0);
-    const bubbleAnchorY = cy + (hy - headR * 1.05) * squash;
-
-    if (this.sayTimer > 0 && this.sayText) {
-      this._drawSpeechBubble(ctx, cx, bubbleAnchorY, rw * 0.92, this.sayText);
-    }
+    // 头顶文案气泡已关闭，避免遮挡等级与上方信息区
   }
 
   _drawPetFront(ctx, cx, cy, base) {

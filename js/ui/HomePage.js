@@ -645,7 +645,23 @@ class HomePage {
     ctx.scale(this._petCardSquash, this._petCardSquash);
     ctx.translate(-pcx, -pcy);
 
-    ctx.fillStyle = UI.petCardBg;
+    const petCardGradient = ctx.createLinearGradient(0, L.petCardY, 0, L.petCardY + L.petCardH);
+    petCardGradient.addColorStop(0, 'rgba(255, 254, 250, 0.98)');
+    petCardGradient.addColorStop(1, 'rgba(255, 249, 240, 0.94)');
+    ctx.fillStyle = petCardGradient;
+    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, L.spec.petCardRadius);
+    ctx.fill();
+    const petGlow = ctx.createRadialGradient(
+      L.petCardX + L.petCardW / 2,
+      L.petCardY + L.petCardH * 0.62,
+      20,
+      L.petCardX + L.petCardW / 2,
+      L.petCardY + L.petCardH * 0.62,
+      L.petCardW * 0.58
+    );
+    petGlow.addColorStop(0, 'rgba(255, 214, 107, 0.24)');
+    petGlow.addColorStop(1, 'rgba(255, 214, 107, 0)');
+    ctx.fillStyle = petGlow;
     canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, L.spec.petCardRadius);
     ctx.fill();
     ctx.strokeStyle = UI.petCardBorder;
@@ -661,27 +677,6 @@ class HomePage {
       ctx.stroke();
       this._petGlowFrames -= 1;
     }
-
-    // 语音气泡（略加长，配合更多互动文案）
-    const bubbleW = Math.min(168, L.petCardW - 36);
-    const bubbleH = 34;
-    const bubbleX = L.petCardX + (L.petCardW - bubbleW) / 2;
-    const bubbleY = L.petCardY + 14;
-    ctx.fillStyle = 'rgba(255, 252, 248, 0.98)';
-    canvasRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 14);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 179, 71, 0.5)';
-    ctx.lineWidth = 1.5;
-    canvasRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 14);
-    ctx.stroke();
-    ctx.fillStyle = UI.text;
-    ctx.font = '500 12px sans-serif';
-    ctx.textAlign = 'center';
-    const bubbleText = (this.lulu && this.lulu.getActionText && this.lulu.getActionText()) || '在呢在呢～';
-    const bubbleMax = 14;
-    const shown =
-      bubbleText.length > bubbleMax ? `${bubbleText.slice(0, bubbleMax - 1)}…` : bubbleText;
-    ctx.fillText(shown, bubbleX + bubbleW / 2, bubbleY + 21);
 
     if (this.lulu) {
       this.lulu.drawPet(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, {

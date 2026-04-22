@@ -40,13 +40,13 @@ function getHomePageLayoutSpec(width, height) {
   const bottomPadding = Math.max(16, Math.min(24, Math.round(safeHeight * 0.024)));
   const headerHeight = Math.max(44, Math.min(64, Math.round(safeHeight * 0.072)));
   /** 成长 + 心情条：在标题与宠物卡之间，避免压在宠物立绘上 */
-  const xpStripGapAfterHeader = 8;
+  const xpStripGapAfterHeader = 12;
   /** 上行：心情 + 经验数字；下行：进度条，避免叠在宠物立绘上 */
   const xpStripHeight = 34;
   const xpStripY = topPadding + headerHeight + xpStripGapAfterHeader;
-  const petCardGapAfterXp = Math.max(8, Math.round(safeHeight * 0.012));
+  const petCardGapAfterXp = Math.max(12, Math.round(safeHeight * 0.018));
   const petCardTop = xpStripY + xpStripHeight + petCardGapAfterXp;
-  const petCardWidth = Math.min(safeWidth - horizontalPadding * 2, 336);
+  const petCardWidth = Math.min(safeWidth - horizontalPadding * 2, 348);
   const actionCardGap = safeHeight < 640 ? 8 : 10;
   /** 承诺区：白底容器贴底铺满；卡片在剩余高度内垂直居中 */
   const ACTION_HEAD = 46;
@@ -54,12 +54,12 @@ function getHomePageLayoutSpec(width, height) {
   const ACTION_BOTTOM_INSET = 14;
   const MIN_CARD_H = 56;
   const MAX_CARD_H = 88;
-  const petToActionGap = Math.max(12, Math.round(safeHeight * 0.018));
+  const petToActionGap = Math.max(16, Math.round(safeHeight * 0.024));
   const usableBelowXp = safeHeight - bottomPadding - petCardTop - petToActionGap;
   const actionMin =
     ACTION_HEAD + ACTION_GAP_AFTER_HEAD + 2 * MIN_CARD_H + actionCardGap + ACTION_BOTTOM_INSET;
-  let petCardHeight = Math.round(usableBelowXp * 0.54);
-  petCardHeight = Math.max(216, Math.min(320, petCardHeight));
+  let petCardHeight = Math.round(usableBelowXp * 0.6);
+  petCardHeight = Math.max(236, Math.min(352, petCardHeight));
   let actionAreaHeight = usableBelowXp - petCardHeight;
   if (actionAreaHeight < actionMin) {
     actionAreaHeight = actionMin;
