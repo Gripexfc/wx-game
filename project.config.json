@@ -6,10 +6,35 @@
     "postcss": false,
     "minified": true,
     "newFeature": true,
-    "enhance": false
+    "enhance": false,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
   },
   "compileType": "game",
-  "libVersion": "latest",
+  "libVersion": "3.15.1",
   "appid": "wxb9bccf507718cc64",
-  "projectname": "lulu-growth"
+  "projectname": "lulu-growth",
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "isGameTourist": false,
+  "editorSetting": {}
 }

@@ -3,7 +3,7 @@
  */
 
 const { LULU_STAGES, COOL_ACTIONS } = require('../utils/constants');
-const { canvasRoundRect } = require('../utils/canvas');
+const { canvasRoundRect } = require('./utils/canvas');
 
 const DIALOGUE = {
   tap: ['在呢在呢～', '戳我干嘛呀', '摸摸头，会变强', '今天也要加油嗷', '嘿嘿，我在听', '再戳要收费了（开玩笑'],
@@ -88,7 +88,7 @@ class Lulu {
     }
   }
 
-  getStage()
+  say(text, frames) {
     this.sayText = text;
     this.sayTimer = frames;
   }
@@ -268,15 +268,7 @@ class Lulu {
       this._drawCoolAction(ctx, cx, cy, base);
     }
 
-    const headR = base * 0.42;
-    const bodyRy = base * 0.42;
-    const hy = showBack ? -bodyRy * 0.72 - headR * 0.06 : -bodyRy * 0.75;
-    const squash = 1 + Math.sin(this.petFrame * 0.08) * 0.02 + (this.mood === 'happy' ? 0.03 : 0);
-    const bubbleAnchorY = cy + (hy - headR * 1.05) * squash;
-
-    if (this.sayTimer > 0 && this.sayText) {
-      this._drawSpeechBubble(ctx, cx, bubbleAnchorY, rw * 0.92, this.sayText);
-    }
+    // 需求：隐藏宠物头顶文案气泡，避免遮挡和视觉拥挤
   }
 
   _drawPetFront(ctx, cx, cy, base) {

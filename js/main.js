@@ -1,7 +1,5 @@
 // main.js — 噜噜养成主游戏入口（重构版）
 
-import './render';
-
 const DESIGN_W = 375;
 const DESIGN_H = 667;
 

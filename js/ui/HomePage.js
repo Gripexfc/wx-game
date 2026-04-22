@@ -87,20 +87,20 @@ class HomePage {
     const bottomReserve = 18;
 
     // Top section
-    const topSectionH = 44;
+    const topSectionH = 52;
     const topY = top;
 
     // Pet card: generous size, fills ~45% of content area
-    const petCardW = Math.min(310, canvasWidth - pad * 2);
-    const petCardH = Math.floor(canvasHeight * 0.42);
+    const petCardW = Math.min(336, canvasWidth - pad * 2);
+    const petCardH = Math.floor(canvasHeight * 0.48);
     const petCardX = (canvasWidth - petCardW) / 2;
-    const petCardY = topY + topSectionH + 6;
+    const petCardY = topY + topSectionH + 16;
 
     // Status cards: 4px gap from pet card (close, tight grouping)
     const statusCardGap = 10;
     const statusCardH = 54;
     const statusCardW = Math.floor((petCardW - statusCardGap) / 2);
-    const statusCardY = petCardY + petCardH + 4;
+    const statusCardY = petCardY + petCardH + 12;
 
     // XP bar: 8px gap from status cards
     const xpBarY = statusCardY + statusCardH + 8;
@@ -391,32 +391,30 @@ class HomePage {
     ctx.textAlign = 'left';
     ctx.fillText(moodIcon, badgeX + badgeW + 6, badgeY + 18);
 
-    // ===== 宠物卡片（圆角24px大卡片） =====
-    ctx.fillStyle = UI.petCardBg;
-    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 24);
+    // ===== 宠物卡片（更大、更显眼） =====
+    const petCardGradient = ctx.createLinearGradient(0, L.petCardY, 0, L.petCardY + L.petCardH);
+    petCardGradient.addColorStop(0, 'rgba(255, 254, 250, 0.98)');
+    petCardGradient.addColorStop(1, 'rgba(255, 249, 240, 0.94)');
+    ctx.fillStyle = petCardGradient;
+    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 26);
+    ctx.fill();
+    const petGlow = ctx.createRadialGradient(
+      L.petCardX + L.petCardW / 2,
+      L.petCardY + L.petCardH * 0.62,
+      20,
+      L.petCardX + L.petCardW / 2,
+      L.petCardY + L.petCardH * 0.62,
+      L.petCardW * 0.58
+    );
+    petGlow.addColorStop(0, 'rgba(255, 214, 107, 0.26)');
+    petGlow.addColorStop(1, 'rgba(255, 214, 107, 0)');
+    ctx.fillStyle = petGlow;
+    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 26);
     ctx.fill();
     ctx.strokeStyle = UI.petCardBorder;
     ctx.lineWidth = 1.5;
-    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 24);
+    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, 26);
     ctx.stroke();
-
-    // 语音气泡
-    const bubbleW = 120;
-    const bubbleH = 32;
-    const bubbleX = L.petCardX + (L.petCardW - bubbleW) / 2;
-    const bubbleY = L.petCardY - 10;
-    ctx.fillStyle = 'rgba(255, 252, 248, 0.98)';
-    canvasRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 14);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 179, 71, 0.5)';
-    ctx.lineWidth = 1.5;
-    canvasRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 14);
-    ctx.stroke();
-    ctx.fillStyle = UI.text;
-    ctx.font = '500 12px sans-serif';
-    ctx.textAlign = 'center';
-    const bubbleText = (this.lulu && this.lulu.getActionText && this.lulu.getActionText()) || '在呢在呢～';
-    ctx.fillText(bubbleText.length > 8 ? `${bubbleText.slice(0, 8)}…` : bubbleText, bubbleX + bubbleW / 2, bubbleY + 20);
 
     // 噜噜宠物
     if (this.lulu) {
