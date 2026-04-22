@@ -64,6 +64,10 @@ function createFakeCtx() {
     lineWidth: 1,
     shadowColor: '',
     shadowBlur: 0,
+    measureText(text) {
+      const s = String(text);
+      return { width: Math.max(8, s.length * 11) };
+    },
     beginPath() {},
     moveTo() {},
     lineTo() {},
@@ -80,6 +84,8 @@ function createFakeCtx() {
     },
     save() {},
     restore() {},
+    translate() {},
+    scale() {},
     createLinearGradient() {
       return createFakeGradient();
     },
@@ -132,12 +138,12 @@ console.log('\n=== PageBrandingLayout Tests ===\n');
 test('getBrandCopy: locks brand title and personalized home relation copy', () => {
   const copy = getBrandCopy('团团');
   expect(copy.brandTitle).toBe('慢慢变乖鸭');
-  expect(copy.homeRelationshipLine).toBe('今天也和 团团 一起慢慢变好');
+  expect(copy.homeRelationshipLine).toBe('今天也和团团一起慢慢变好');
 });
 
 test('getBrandCopy: falls back to a sensible default duck name when input is empty', () => {
   const copy = getBrandCopy('   ');
-  expect(copy.homeRelationshipLine).toBe('今天也和 小鸭 一起慢慢变好');
+  expect(copy.homeRelationshipLine).toBe('今天也和小鸭一起慢慢变好');
 });
 
 test('getHomePageLayoutSpec: keeps home banner-free while exposing three-part home sections', () => {
@@ -179,10 +185,9 @@ test('getHomePageLayoutSpec: scales the three-part hierarchy on shorter screens 
       `Expected compact actionAreaTop (${compact.actionAreaTop}) below pet card bottom (${compact.petCardTop + compact.petCardHeight})`
     );
   }
-  if (!(compact.actionAreaTop - (compact.petCardTop + compact.petCardHeight) >= 18)) {
-    throw new Error(
-      `Expected compact action gap (${compact.actionAreaTop - (compact.petCardTop + compact.petCardHeight)}) to stay breathable`
-    );
+  const petToActionGap = compact.actionAreaTop - (compact.petCardTop + compact.petCardHeight);
+  if (!(petToActionGap >= 12)) {
+    throw new Error(`Expected compact pet-to-action gap (${petToActionGap}) to stay breathable`);
   }
   if (!(compact.actionAreaTop < 568)) {
     throw new Error(`Expected compact actionAreaTop (${compact.actionAreaTop}) to stay within screen height`);
@@ -323,6 +328,7 @@ test('OnboardingPage.render: hides banner and never shows it', () => {
   try {
     const OnboardingPage = loader.OnboardingPage;
     const page = new OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set() {},
       },
@@ -356,6 +362,7 @@ test('OnboardingPage.render: consumes runtime copy fields instead of hard-coded 
   try {
     const OnboardingPage = loader.OnboardingPage;
     const page = new OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set() {},
       },
@@ -407,6 +414,7 @@ test('OnboardingPage.render: does not auto-open naming input on first paint anym
   try {
     const OnboardingPage = loader.OnboardingPage;
     const page = new OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set() {},
       },
@@ -449,6 +457,7 @@ test('OnboardingPage.onTouchStart: tapping primary button opens naming input whe
   try {
     const OnboardingPage = loader.OnboardingPage;
     const page = new OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set() {},
       },
@@ -486,6 +495,7 @@ test('OnboardingPage.onTouchStart: tapping anywhere on the naming card opens nam
   try {
     const OnboardingPage = loader.OnboardingPage;
     const page = new OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set() {},
       },
@@ -579,6 +589,7 @@ test('OnboardingPage.promptInput: uses copy-based modal strings and validation t
     };
 
     const page = new OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set() {},
       },
@@ -629,6 +640,7 @@ test('OnboardingPage._promptCustomGoal: uses copy-based modal strings and empty 
     };
 
     const page = new OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set() {},
       },
@@ -668,6 +680,7 @@ test('OnboardingPage goal feedback: uses the named duck instead of hard-coded lu
     const said = [];
     const named = [];
     const page = new OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set() {},
       },

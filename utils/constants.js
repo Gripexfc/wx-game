@@ -49,6 +49,8 @@ const STORAGE_KEYS = {
   STATS: 'stats_data',
   ACHIEVEMENTS: 'achievement_data',
   SETTINGS: 'settings_data',
+  /** 0～3，与 spec petVariantId 一致 */
+  PET_VARIANT_ID: 'pet_variant_id',
 };
 
 // ==========================================

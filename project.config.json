@@ -29,6 +29,7 @@
   "compileType": "game",
   "libVersion": "3.5.8",
   "appid": "wx7d94c6769c87a3cd",
+  "cloudfunctionRoot": "cloudfunctions/",
   "projectname": "lulu-growth",
   "condition": {
     "search": {

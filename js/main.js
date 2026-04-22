@@ -1,5 +1,16 @@
 // main.js — 噜噜养成主游戏入口（重构版）
 
+if (typeof wx !== 'undefined' && wx.cloud) {
+  try {
+    wx.cloud.init({ traceUser: true });
+  } catch (e) {
+    console.warn('[main] cloud.init', e);
+  }
+}
+
+const { STORAGE_KEYS: GLOBAL_STORAGE } = require('../utils/constants');
+const { upsertUserProfile } = require('./services/cloud/user');
+
 const DESIGN_W = 375;
 const DESIGN_H = 667;
 
@@ -28,6 +39,22 @@ const Lulu = require('./Lulu');
 const ONLINE_XP_INTERVAL = 60000;    // 在线XP：每分钟+1
 const COOL_ACTION_PROB = 0.3;       // 酷炫动作触发概率30%
 const FRAME_FALLBACK_MS = 16;        // requestAnimationFrame兜底帧时长
+const GOAL_UNDO_WINDOW_MS = 10000;   // 任务完成后撤销窗口
+const MAJOR_EVOLUTION_LEVELS = [6, 11, 16];
+/** 可选「暴击」经验：每日触发上限（自然日，与 goal 同日历） */
+const GOAL_CRIT_DAILY_CAP = 3;
+const GOAL_CRIT_CHANCE = 0.12;
+
+function normalizeGamePrefs(raw) {
+  const p = raw && typeof raw === 'object' ? { ...raw } : {};
+  const tier = p.motionTier;
+  p.motionTier = tier === 'low' || tier === 'high' ? tier : 'standard';
+  /** 默认关闭：用户点 Lv 徽章可开启「完成暴击」（每日最多 3 次） */
+  if (p.goalCritEnabled === undefined) p.goalCritEnabled = false;
+  if (typeof p.critCount !== 'number' || p.critCount < 0) p.critCount = 0;
+  if (typeof p.critDay !== 'string') p.critDay = '';
+  return p;
+}
 
 const TaskManager = require('./TaskManager');
 const GrowthSystem = require('./GrowthSystem');
@@ -60,13 +87,14 @@ class Game {
     this.wishManager.setStorage(this.storage);
     this.petStateManager = new PetStateManager();
     this.petStateManager.setStorage(this.storage);
-
     this.homePage = new HomePage(this);
     this.onboardingPage = new OnboardingPage(this);
 
     this.currentPage = 'home';
     this._onlineXP = 0;
     this._lastOnlineXPTime = Date.now();
+    this._goalUndoState = Object.create(null);
+    this.gamePrefs = normalizeGamePrefs(null);
 
     this.loadData();
     this.homePage.setLulu(this.lulu);
@@ -76,6 +104,8 @@ class Game {
       petStateManager: this.petStateManager,
       growth: this.growth,
       onCompleteGoal: (goalId) => this.completeGoal(goalId),
+      onUndoGoal: (goalId) => this.undoGoal(goalId),
+      canUndoGoal: (goalId) => this.canUndoGoal(goalId),
       onCommitGoal: (goalId) => { /* 承诺目标 */ },
       onCreateGoal: (goal) => { /* 创建目标 */ },
     });
@@ -173,6 +203,16 @@ class Game {
     this.homePage.setLulu(this.lulu);
   }
 
+  /** 首启完成时尝试同步用户资料到云（失败忽略，本地已保存） */
+  onOnboardingCloudSync({ petVariantId, petName }) {
+    const safeName = (petName && String(petName).trim()) || this.getLuluName();
+    upsertUserProfile({
+      petVariantId: petVariantId != null ? petVariantId : 0,
+      petName: safeName,
+      nickName: safeName,
+    }).catch(() => {});
+  }
+
   createAndCommitGoal(goalData) {
     try {
       const goal = this.goalManager.createGoal(goalData);
@@ -217,6 +257,10 @@ class Game {
       this.lulu.todayInteractionCount = Number.isFinite(luluData.todayInteractionCount) ? luluData.todayInteractionCount : 0;
       this.lulu.unlockedActions = luluData.unlockedActions || [];
     }
+    const petVar = this.storage.get(GLOBAL_STORAGE.PET_VARIANT_ID);
+    if (petVar != null && this.lulu && typeof this.lulu.setPetVariantId === 'function') {
+      this.lulu.setPetVariantId(petVar);
+    }
 
     // 旧数据兼容：加载 task_data
     const taskData = this.storage.get('task_data');
@@ -235,6 +279,8 @@ class Game {
     // === 加载新系统数据 ===
     this.goalManager.deserialize(this.storage.get('goal_data'));
     this.goalManager.checkDailyReset();
+    this.gamePrefs = normalizeGamePrefs(this.storage.get('game_prefs'));
+    this._syncCritDayWithCalendar();
     this.wishManager.deserialize(this.storage.get('wish_data'));
     this.wishManager.checkDailyReset();
     this.petStateManager.deserialize(this.storage.get('pet_state_data'));
@@ -290,6 +336,9 @@ class Game {
   }
 
   saveData() {
+    if (this.lulu && typeof this.lulu.petVariantId === 'number') {
+      this.storage.set(GLOBAL_STORAGE.PET_VARIANT_ID, this.lulu.petVariantId);
+    }
     this.storage.set('lulu_data', {
       level: this.lulu.level,
       xp: this.lulu.xp,
@@ -302,27 +351,72 @@ class Game {
     this.storage.set('goal_data', this.goalManager.serialize());
     this.storage.set('wish_data', this.wishManager.serialize());
     this.storage.set('pet_state_data', this.petStateManager.serialize());
+    this.storage.set('game_prefs', this.gamePrefs);
+  }
+
+  getMotionTier() {
+    return (this.gamePrefs && this.gamePrefs.motionTier) || 'standard';
+  }
+
+  getGoalCritEnabled() {
+    return Boolean(this.gamePrefs && this.gamePrefs.goalCritEnabled);
+  }
+
+  setMotionTier(tier) {
+    if (!this.gamePrefs) this.gamePrefs = normalizeGamePrefs(null);
+    this.gamePrefs.motionTier = tier === 'low' || tier === 'high' ? tier : 'standard';
+    this.saveData();
+  }
+
+  setGoalCritEnabled(enabled) {
+    if (!this.gamePrefs) this.gamePrefs = normalizeGamePrefs(null);
+    this.gamePrefs.goalCritEnabled = Boolean(enabled);
+    this.saveData();
+  }
+
+  _syncCritDayWithCalendar() {
+    if (!this.gamePrefs || !this.goalManager) return;
+    const today = this.goalManager.getTodayString();
+    if (this.gamePrefs.critDay !== today) {
+      this.gamePrefs.critDay = today;
+      this.gamePrefs.critCount = 0;
+    }
   }
 
   /** 完成目标（今日承诺） */
   completeGoal(goalId) {
     const commitments = this.goalManager.getTodayCommitments();
     const commit = commitments.find(c => c.goalId === goalId);
-    if (!commit || commit.completed) return;
+    if (!commit || commit.completed) return { success: false, reason: 'invalid' };
     const goal = this.goalManager.getGoalById(goalId);
 
     // 查找对应心愿并完成
     const wish = this.wishManager.getTodayWishes().find(w => w.goalId === goalId);
     const extraReward = wish ? 5 : 0;
-    const xpBreakdown = this.goalManager.calculateGoalXp(goalId, this.petStateManager.moodValue, extraReward);
+    this._syncCritDayWithCalendar();
+    const xpBreakdownBase = this.goalManager.calculateGoalXp(goalId, this.petStateManager.moodValue, extraReward);
+    let critBonus = 0;
+    let critApplied = false;
+    const critOn = this.getGoalCritEnabled();
+    const critCount = (this.gamePrefs && this.gamePrefs.critCount) || 0;
+    if (critOn && critCount < GOAL_CRIT_DAILY_CAP && Math.random() < GOAL_CRIT_CHANCE) {
+      critBonus = Math.min(10, Math.max(3, Math.floor(xpBreakdownBase.total * 0.34)));
+      critApplied = true;
+      this.gamePrefs.critCount = critCount + 1;
+      this.gamePrefs.critDay = this.goalManager.getTodayString();
+    }
+    const xp = Math.min(40, xpBreakdownBase.total + critBonus);
+    const xpBreakdown = {
+      ...xpBreakdownBase,
+      critBonus,
+      total: xp,
+    };
 
     this.goalManager.completeCommitment(goalId);
     let wishReward = null;
     if (wish) {
       wishReward = this.wishManager.completeWish(wish.id);
     }
-    const xp = xpBreakdown.total;
-
     const levelBefore = this.growth.level;
     this.growth.addXp(xp);
     if (this.growth.level > this.lulu.level) {
@@ -330,6 +424,14 @@ class Game {
     }
     if (this.growth.level > levelBefore) {
       this.lulu.say(`${this.getLuluName()}升级啦！`, 100);
+    }
+    const leveledUp = this.growth.level > levelBefore;
+    const majorEvolution = leveledUp && MAJOR_EVOLUTION_LEVELS.includes(this.growth.level);
+    if (leveledUp && this.lulu && typeof this.lulu.onLevelUp === 'function') {
+      this.lulu.onLevelUp({
+        level: this.growth.level,
+        majorEvolution,
+      });
     }
 
     // 心情更新
@@ -356,13 +458,82 @@ class Game {
       }
     }
 
+    if (critApplied && critBonus > 0 && this.lulu && typeof this.lulu.say === 'function' && !leveledUp) {
+      this.lulu.say('暴击经验！', 72);
+    }
+
     this.saveData();
+    this._goalUndoState[goalId] = {
+      expiresAt: Date.now() + GOAL_UNDO_WINDOW_MS,
+      xpAwarded: xp,
+      moodBoost,
+      wishId: wish ? wish.id : null,
+      addedLoveStar: Boolean(wishReward && wishReward.loveStar),
+      critApplied,
+    };
     return {
+      success: true,
       goal,
       wishReward,
       xpAwarded: xp,
       xpBreakdown,
+      visualFx: {
+        goalId,
+        xp,
+        moodBoost,
+        leveledUp,
+        majorEvolution,
+        level: this.growth.level,
+        crit: critApplied,
+        critBonus,
+      },
     };
+  }
+
+  undoGoal(goalId) {
+    const undoState = this._goalUndoState[goalId];
+    if (!undoState) return { success: false, reason: 'missing' };
+    if (Date.now() > undoState.expiresAt) {
+      delete this._goalUndoState[goalId];
+      return { success: false, reason: 'expired' };
+    }
+    const undone = this.goalManager.undoCompleteCommitment(goalId);
+    if (!undone) return { success: false, reason: 'already-undone' };
+
+    if (undoState.wishId) {
+      this.wishManager.undoCompleteWish(undoState.wishId);
+    }
+
+    if (undoState.xpAwarded) {
+      this.growth.addXp(-undoState.xpAwarded);
+      this.lulu.level = this.growth.level;
+    }
+    if (undoState.moodBoost) {
+      this.petStateManager.adjustMood(-undoState.moodBoost);
+      this.lulu.moodValue = this.petStateManager.moodValue;
+    }
+    if (undoState.addedLoveStar) {
+      this.growth.loveStars = Math.max(0, (this.growth.loveStars || 0) - 1);
+    }
+
+    if (undoState.critApplied && this.gamePrefs) {
+      const today = this.goalManager.getTodayString();
+      if (this.gamePrefs.critDay === today && (this.gamePrefs.critCount || 0) > 0) {
+        this.gamePrefs.critCount -= 1;
+      }
+    }
+
+    if (this.lulu) {
+      this.lulu.say('刚刚那次先不算，我们继续来', 90);
+    }
+    delete this._goalUndoState[goalId];
+    this.saveData();
+    return { success: true, goalId };
+  }
+
+  canUndoGoal(goalId) {
+    const state = this._goalUndoState[goalId];
+    return Boolean(state && Date.now() <= state.expiresAt);
   }
 
   onLuluInteraction() {
@@ -380,6 +551,9 @@ class Game {
   }
 
   update() {
+    if (this.lulu) {
+      this.lulu.motionTier = this.getMotionTier();
+    }
     this.lulu.update();
 
     // 在线计时：每分钟+1 XP

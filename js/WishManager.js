@@ -69,6 +69,13 @@ class WishManager {
     };
   }
 
+  undoCompleteWish(wishId) {
+    const wish = this.todayWishes.find(w => w.id === wishId);
+    if (!wish || !wish.completed) return false;
+    wish.completed = false;
+    return true;
+  }
+
   getUnfinishedYesterday() {
     return this.yesterdayUnfinished;
   }

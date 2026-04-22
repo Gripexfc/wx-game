@@ -206,6 +206,24 @@ class GoalManager {
     }
   }
 
+  undoCompleteCommitment(goalId) {
+    const commit = this.todayCommitments.find(c => c.goalId === goalId);
+    if (!commit || !commit.completed) return false;
+    commit.completed = false;
+    const goal = this.getGoalById(goalId);
+    if (goal) {
+      goal.streakDays = Math.max(0, (goal.streakDays || 0) - 1);
+      if (goal.type === 'milestone') {
+        goal.currentProgress = Math.max(0, (goal.currentProgress || 0) - 1);
+      }
+      if (goal.type === 'oneTime') {
+        goal.completed = false;
+      }
+      goal.lastDoneAt = null;
+    }
+    return true;
+  }
+
   getRecommendations() {
     const shuffled = [...RECOMMENDED_GOALS].sort(() => Math.random() - 0.5);
     const count = 3 + Math.floor(Math.random() * 3);

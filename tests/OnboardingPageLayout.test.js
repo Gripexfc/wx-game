@@ -149,6 +149,7 @@ test('OnboardingPage.render: hides banner and does not show it', () => {
 
   try {
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -175,6 +176,7 @@ test('OnboardingPage.render: draws adoption-page key copy on canvas', () => {
 
   try {
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -205,6 +207,7 @@ test('OnboardingPage.render: reads key text from page.copy instead of relying on
 
   try {
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -242,6 +245,7 @@ test('OnboardingPage.render: does not auto-open naming input on first paint', ()
 
   try {
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -278,6 +282,7 @@ test('OnboardingPage.render: button visual changes between disabled and enabled 
 
   try {
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -309,6 +314,7 @@ test('OnboardingPage.onTouchStart: tapping naming card or primary button opens n
 
   try {
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -343,6 +349,7 @@ test('OnboardingPage.onTouchStart: tapping primary button with confirmEnabled su
     const opened = [];
     const stored = [];
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set(key, value) {
           stored.push({ key, value });
@@ -389,6 +396,7 @@ test('OnboardingPage._onConfirm: uses copy templates to open goal picker', () =>
     const opened = [];
     const stored = [];
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set(key, value) {
           stored.push({ key, value });
@@ -431,6 +439,7 @@ test('OnboardingPage._onConfirm: does not persist the duck name before the first
   try {
     const stored = [];
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set(key, value) {
           stored.push({ key, value });
@@ -475,6 +484,7 @@ test('OnboardingPage.promptInput: cancel does not show validation toast', () => 
       },
     };
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -505,6 +515,7 @@ test('OnboardingPage.promptInput: wires modal title, placeholder, confirm, and c
       showToast() {},
     };
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -545,6 +556,7 @@ test('OnboardingPage.promptInput: invalid confirmed input shows toast text from 
       },
     };
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -578,6 +590,7 @@ test('OnboardingPage.promptInput: cancel keeps onboarding state unchanged', () =
       showToast() {},
     };
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set(key, value) {
           stored.push({ key, value });
@@ -616,6 +629,7 @@ test('OnboardingPage._promptCustomGoal: uses copy-based modal title, placeholder
       showToast() {},
     };
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -656,6 +670,7 @@ test('OnboardingPage._promptCustomGoal: empty confirmed input shows copy-based e
       },
     };
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -690,6 +705,7 @@ test('OnboardingPage._promptCustomGoal: cancel does not show empty toast', () =>
       },
     };
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         return null;
@@ -724,6 +740,7 @@ test('OnboardingPage._promptCustomGoal: cancel keeps goal creation state unchang
       },
     };
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: { set() {} },
       createAndCommitGoal() {
         createCalls += 1;
@@ -754,6 +771,7 @@ test('OnboardingPage._handleGoalPickerAction: recommended goal success speech co
     const named = [];
     const stored = [];
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set(key, value) {
           stored.push({ key, value });
@@ -798,6 +816,7 @@ test('OnboardingPage._handleGoalPickerAction: named success speech uses the real
     const named = [];
     const stored = [];
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set(key, value) {
           stored.push({ key, value });
@@ -827,7 +846,10 @@ test('OnboardingPage._handleGoalPickerAction: named success speech uses the real
 
     expect(said.length).toBe(1);
     expect(said[0]).toBe('测试成功文案：团团已经收到目标');
-    expect(stored).toEqual([{ key: 'lulu_name', value: '团团' }]);
+    expect(stored).toEqual([
+      { key: 'lulu_name', value: '团团' },
+      { key: 'pet_variant_id', value: 0 },
+    ]);
     expect(named.length).toBe(1);
     expect(named[0]).toBe('团团');
   } finally {
@@ -851,6 +873,7 @@ test('OnboardingPage._promptCustomGoal: successful custom goal speech comes from
       showToast() {},
     };
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set(key, value) {
           stored.push({ key, value });
@@ -900,6 +923,7 @@ test('OnboardingPage._promptCustomGoal: successful custom goal persists the chos
       showToast() {},
     };
     const page = new loader.OnboardingPage({
+      skipPetPickOnboarding: true,
       storage: {
         set(key, value) {
           stored.push({ key, value });
@@ -926,7 +950,10 @@ test('OnboardingPage._promptCustomGoal: successful custom goal persists the chos
 
     expect(said.length).toBe(1);
     expect(said[0]).toBe('测试自定义目标成功提示');
-    expect(stored).toEqual([{ key: 'lulu_name', value: '团团' }]);
+    expect(stored).toEqual([
+      { key: 'lulu_name', value: '团团' },
+      { key: 'pet_variant_id', value: 0 },
+    ]);
     expect(named.length).toBe(1);
     expect(named[0]).toBe('团团');
   } finally {

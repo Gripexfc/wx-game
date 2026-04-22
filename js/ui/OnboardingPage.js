@@ -1,10 +1,11 @@
 /**
- * 首次昵称引导页
+ * 首次引导：选宠(四选一) -> 起名 -> 首目标
  */
 const BannerAdManager = require('../ads/BannerAdManager');
 const { canvasRoundRect } = require('../utils/canvas');
 const GoalPickerOverlay = require('./GoalPickerOverlay');
 const { getOnboardingCopy, getOnboardingLayoutSpec } = require('./pageLayoutSpec');
+const { STORAGE_KEYS } = require('../../utils/constants');
 
 class OnboardingPage {
   constructor(game) {
@@ -13,7 +14,8 @@ class OnboardingPage {
     this.inputValue = '';
     this.confirmEnabled = false;
     this._banner = BannerAdManager.getInstance();
-    this.stage = 'naming';
+    this.stage = game && game.skipPetPickOnboarding ? 'naming' : 'petPick';
+    this.selectedPetVariant = 0;
     this.goalPicker = new GoalPickerOverlay(game);
     this.copy = getOnboardingCopy();
   }
@@ -29,6 +31,28 @@ class OnboardingPage {
       return;
     }
     const layout = this._getLayout(canvasWidth, canvasHeight);
+
+    if (this.stage === 'petPick') {
+      if (this.lulu && typeof this.lulu.setPetVariantId === 'function') {
+        this.lulu.setPetVariantId(this.selectedPetVariant);
+      }
+      for (let i = 0; i < layout.petTiles.length; i++) {
+        const t = layout.petTiles[i];
+        if (x >= t.x && x <= t.x + t.w && y >= t.y && y <= t.y + t.h) {
+          this.selectedPetVariant = t.variantId;
+          if (this.lulu && typeof this.lulu.setPetVariantId === 'function') {
+            this.lulu.setPetVariantId(this.selectedPetVariant);
+          }
+          return;
+        }
+      }
+      const b = layout.buttonRect;
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+        this.stage = 'naming';
+      }
+      return;
+    }
+
 
     // 检测确定按钮
     const btnW = layout.buttonRect.w;
@@ -69,6 +93,13 @@ class OnboardingPage {
     if (!name) return;
     if (this.game.storage && typeof this.game.storage.set === 'function') {
       this.game.storage.set('lulu_name', name);
+      this.game.storage.set(STORAGE_KEYS.PET_VARIANT_ID, this.selectedPetVariant);
+    }
+    if (this.lulu && typeof this.lulu.setPetVariantId === 'function') {
+      this.lulu.setPetVariantId(this.selectedPetVariant);
+    }
+    if (typeof this.game.onOnboardingCloudSync === 'function') {
+      this.game.onOnboardingCloudSync({ petVariantId: this.selectedPetVariant, petName: name });
     }
     if (typeof this.game.onNameSet === 'function') {
       this.game.onNameSet(name);
@@ -216,6 +247,9 @@ class OnboardingPage {
   /** 渲染 */
   render(ctx, canvasWidth, canvasHeight) {
     this._banner.hide();
+    if (this.lulu && typeof this.lulu.setPetVariantId === 'function' && (this.stage === 'petPick' || this.stage === 'naming')) {
+      this.lulu.setPetVariantId(this.selectedPetVariant);
+    }
 
     // 暖色背景
     const g = ctx.createLinearGradient(0, 0, 0, canvasHeight);
@@ -234,6 +268,7 @@ class OnboardingPage {
 
     const layout = this._getLayout(canvasWidth, canvasHeight);
 
+    const isPet = this.stage === 'petPick';
     // 上部品牌区
     ctx.fillStyle = '#8A7765';
     ctx.font = '12px sans-serif';
@@ -246,7 +281,11 @@ class OnboardingPage {
 
     ctx.fillStyle = '#8A7765';
     ctx.font = '14px sans-serif';
-    ctx.fillText(this.copy.subtitle, canvasWidth / 2, layout.heroTop + 78);
+    ctx.fillText(isPet ? this.copy.petPickTitle : this.copy.subtitle, canvasWidth / 2, layout.heroTop + 78);
+    if (isPet) {
+      ctx.font = '12px sans-serif';
+      ctx.fillText(this.copy.petPickSubtitle, canvasWidth / 2, layout.heroTop + 98);
+    }
 
     // 中部鸭子视觉区
     ctx.fillStyle = 'rgba(255, 221, 150, 0.22)';
@@ -261,6 +300,25 @@ class OnboardingPage {
       Math.PI * 2
     );
     ctx.fill();
+
+    if (isPet) {
+      for (let i = 0; i < layout.petTiles.length; i++) {
+        const t = layout.petTiles[i];
+        const sel = t.variantId === this.selectedPetVariant;
+        ctx.fillStyle = sel ? 'rgba(255, 179, 71, 0.35)' : 'rgba(255, 255, 255, 0.5)';
+        canvasRoundRect(ctx, t.x, t.y, t.w, t.h, 14);
+        ctx.fill();
+        ctx.strokeStyle = sel ? '#E89400' : 'rgba(138, 119, 101, 0.35)';
+        ctx.lineWidth = sel ? 2.2 : 1.2;
+        canvasRoundRect(ctx, t.x, t.y, t.w, t.h, 14);
+        ctx.stroke();
+        const label = (this.copy.petVariantNames && this.copy.petVariantNames[t.variantId]) || `造型${t.variantId + 1}`;
+        ctx.fillStyle = '#5B4A3A';
+        ctx.font = '600 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, t.x + t.w / 2, t.y + t.h / 2 + 4);
+      }
+    }
 
     if (this.lulu) {
       this.lulu.update();
@@ -282,32 +340,44 @@ class OnboardingPage {
     canvasRoundRect(ctx, layout.namingCardX, layout.namingCardY, layout.namingCardW, layout.namingCardH, 22);
     ctx.stroke();
 
-    ctx.fillStyle = '#5B4A3A';
-    ctx.font = '600 16px sans-serif';
-    ctx.fillText(this.copy.namePrompt, canvasWidth / 2, layout.namingCardY + 32);
+    if (isPet) {
+      ctx.fillStyle = '#5B4A3A';
+      ctx.font = '600 16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('在上方格子中选造型', canvasWidth / 2, layout.namingCardY + 32);
+      ctx.fillStyle = 'rgba(138, 119, 101, 0.72)';
+      ctx.font = '12px sans-serif';
+      ctx.fillText('中央预览会随选择变化', canvasWidth / 2, layout.namingCardY + 52);
+    } else {
+      ctx.fillStyle = '#5B4A3A';
+      ctx.font = '600 16px sans-serif';
+      ctx.fillText(this.copy.namePrompt, canvasWidth / 2, layout.namingCardY + 32);
 
-    ctx.fillStyle = 'rgba(138, 119, 101, 0.72)';
-    ctx.font = '12px sans-serif';
-    ctx.fillText(this.copy.nameReminder, canvasWidth / 2, layout.namingCardY + 50);
+      ctx.fillStyle = 'rgba(138, 119, 101, 0.72)';
+      ctx.font = '12px sans-serif';
+      ctx.fillText(this.copy.nameReminder, canvasWidth / 2, layout.namingCardY + 50);
+    }
 
-    // 输入框占位区域（实际输入仍由 showModal / keyboard 承担）
-    ctx.fillStyle = 'rgba(91, 74, 58, 0.1)';
-    canvasRoundRect(
-      ctx,
-      layout.inputRect.x,
-      layout.inputRect.y,
-      layout.inputRect.w,
-      layout.inputRect.h,
-      layout.inputRect.radius
-    );
-    ctx.fill();
-    ctx.fillStyle = 'rgba(138, 119, 101, 0.5)';
-    ctx.font = '15px sans-serif';
-    ctx.textAlign = 'center';
-    const displayName = this.inputValue || this.copy.inputPlaceholder;
-    ctx.fillText(displayName, canvasWidth / 2, layout.inputRect.y + 31);
+    if (!isPet) {
+      // 输入框占位区域（实际输入仍由 showModal / keyboard 承担）
+      ctx.fillStyle = 'rgba(91, 74, 58, 0.1)';
+      canvasRoundRect(
+        ctx,
+        layout.inputRect.x,
+        layout.inputRect.y,
+        layout.inputRect.w,
+        layout.inputRect.h,
+        layout.inputRect.radius
+      );
+      ctx.fill();
+      ctx.fillStyle = 'rgba(138, 119, 101, 0.5)';
+      ctx.font = '15px sans-serif';
+      ctx.textAlign = 'center';
+      const displayName = this.inputValue || this.copy.inputPlaceholder;
+      ctx.fillText(displayName, canvasWidth / 2, layout.inputRect.y + 31);
+    }
 
-    const btnEnabled = this.confirmEnabled;
+    const btnEnabled = isPet ? true : this.confirmEnabled;
     ctx.fillStyle = btnEnabled ? '#FFB347' : 'rgba(255, 179, 71, 0.4)';
     canvasRoundRect(
       ctx,
@@ -320,7 +390,9 @@ class OnboardingPage {
     ctx.fill();
     ctx.fillStyle = btnEnabled ? '#FFF' : 'rgba(255,255,255,0.7)';
     ctx.font = '600 16px sans-serif';
-    ctx.fillText(this.copy.primaryButtonText, canvasWidth / 2, layout.buttonRect.y + 31);
+    ctx.textAlign = 'center';
+    const btnText = isPet ? (this.copy.petPickButtonText || '选好了，去起名') : this.copy.primaryButtonText;
+    ctx.fillText(btnText, canvasWidth / 2, layout.buttonRect.y + 31);
 
     ctx.fillStyle = 'rgba(138, 119, 101, 0.6)';
     ctx.font = '11px sans-serif';
