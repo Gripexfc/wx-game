@@ -54,7 +54,8 @@ function getHomePageLayoutSpec(width, height) {
   const ACTION_BOTTOM_INSET = 14;
   const MIN_CARD_H = 56;
   const MAX_CARD_H = 88;
-  const petToActionGap = Math.max(16, Math.round(safeHeight * 0.024));
+  // 任务区整体下移：扩大宠物区与任务区之间的留白
+  const petToActionGap = Math.max(26, Math.round(safeHeight * 0.038));
   const usableBelowXp = safeHeight - bottomPadding - petCardTop - petToActionGap;
   const actionMin =
     ACTION_HEAD + ACTION_GAP_AFTER_HEAD + 2 * MIN_CARD_H + actionCardGap + ACTION_BOTTOM_INSET;
@@ -66,6 +67,8 @@ function getHomePageLayoutSpec(width, height) {
     petCardHeight = Math.max(200, usableBelowXp - actionAreaHeight);
   }
   const actionAreaTop = petCardTop + petCardHeight + petToActionGap;
+  // 任务模块高度略降，避免在中小屏下压迫感和遮挡风险
+  actionAreaHeight = Math.max(actionMin, actionAreaHeight - 12);
   const innerForCards = Math.max(
     0,
     actionAreaHeight - ACTION_HEAD - ACTION_GAP_AFTER_HEAD - ACTION_BOTTOM_INSET - actionCardGap

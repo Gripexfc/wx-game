@@ -346,6 +346,9 @@ class Lulu {
     this._lastAutoAction = null;
     /** 0～3 皮肤变体，与 spec petVariantId 一致 */
     this.petVariantId = 0;
+    /** 外部驱动姿态（任务语义场景） */
+    this._forcedPose = 'idle';
+    this._forcedPoseTimer = 0;
   }
 
   setPetVariantId(v) {
@@ -414,6 +417,15 @@ class Lulu {
     if (psm) {
       this.moodValue = psm.moodValue;
     }
+  }
+
+  setPose(poseId) {
+    this._forcedPose = poseId || 'idle';
+    if (this._forcedPose === 'idle') {
+      this._forcedPoseTimer = 0;
+      return;
+    }
+    this._forcedPoseTimer = 56;
   }
 
   say(text, frames) {
@@ -545,6 +557,10 @@ class Lulu {
     }
 
     if (this._tapBounce > 0) this._tapBounce -= 1;
+    if (this._forcedPoseTimer > 0) this._forcedPoseTimer -= 1;
+    if (this._forcedPoseTimer <= 0 && this._forcedPose !== 'idle') {
+      this._forcedPose = 'idle';
+    }
 
     if (!this.autoAction) {
       this._settleOffsetX *= 0.84;
@@ -874,6 +890,19 @@ class Lulu {
       bodyTilt += Math.sin(this._autoActionPhase * 0.95) * 0.22;
       bodyOffsetX += Math.cos(this._autoActionPhase * 0.77) * 4.8;
     }
+    const hasScenePose = this._forcedPose && this._forcedPose !== 'idle' && !this.autoAction;
+    if (hasScenePose) {
+      if (this._forcedPose === 'fitness_showoff') {
+        bodyTilt += Math.sin(this.petFrame * 0.18) * 0.05;
+        bodyOffsetY -= 2.2;
+      } else if (this._forcedPose === 'read_focus') {
+        eyeSquint = Math.max(eyeSquint, 0.52);
+        bodyOffsetY += Math.sin(this.petFrame * 0.08) * 1.2;
+      } else if (this._forcedPose === 'eat_vitality') {
+        bodyOffsetY -= Math.abs(Math.sin(this.petFrame * 0.2)) * 2;
+        bodyTilt += Math.sin(this.petFrame * 0.16) * 0.04;
+      }
+    }
     this._settleOffsetX = bodyOffsetX;
     this._settleOffsetY = bodyOffsetY;
     this._settleTilt = bodyTilt;
@@ -1161,6 +1190,15 @@ class Lulu {
     ctx.beginPath();
     ctx.ellipse(hx + bodyRx * 0.9, bodyRy * 0.32, bodyRx * 0.09, bodyRx * 0.065, 0, 0, Math.PI * 2);
     ctx.fill();
+    if (hasScenePose && this._forcedPose === 'fitness_showoff') {
+      ctx.fillStyle = 'rgba(255, 170, 98, 0.55)';
+      ctx.beginPath();
+      ctx.ellipse(hx - bodyRx * 0.82, bodyRy * 0.22, bodyRx * 0.14, bodyRx * 0.08, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(hx + bodyRx * 0.82, bodyRy * 0.22, bodyRx * 0.14, bodyRx * 0.08, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // 短粗圆脚
     ctx.fillStyle = '#FFCF7F';
@@ -1179,6 +1217,26 @@ class Lulu {
     ctx.beginPath();
     ctx.ellipse(hx + bodyRx * 0.52, bodyRy * 0.92, bodyRx * 0.1, bodyRx * 0.065, 0, 0, Math.PI * 2);
     ctx.fill();
+    if (hasScenePose && this._forcedPose === 'read_focus') {
+      ctx.fillStyle = 'rgba(180, 140, 100, 0.75)';
+      ctx.fillRect(hx - bodyRx * 0.36, bodyRy * 0.48, bodyRx * 0.72, bodyRy * 0.12);
+      ctx.strokeStyle = 'rgba(255, 235, 198, 0.85)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(hx, bodyRy * 0.49);
+      ctx.lineTo(hx, bodyRy * 0.58);
+      ctx.stroke();
+    }
+    if (hasScenePose && this._forcedPose === 'eat_vitality') {
+      const sparkle = Math.sin(this.petFrame * 0.25) * 0.5 + 0.5;
+      ctx.fillStyle = `rgba(255, 220, 120, ${0.28 + sparkle * 0.22})`;
+      ctx.beginPath();
+      ctx.arc(hx - bodyRx * 0.86, -bodyRy * 0.18, bodyRx * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(hx + bodyRx * 0.84, -bodyRy * 0.1, bodyRx * 0.065, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.restore();
   }

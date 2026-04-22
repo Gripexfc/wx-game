@@ -5,6 +5,7 @@ const BannerAdManager = require('../ads/BannerAdManager');
 const { canvasRoundRect } = require('../utils/canvas');
 const GoalPickerOverlay = require('./GoalPickerOverlay');
 const { getBrandCopy, HOME_MOTIVATION_QUOTES, getHomePageLayoutSpec, getHomePageCommitmentLayout } = require('./pageLayoutSpec');
+const { PetBackgroundSystem } = require('./pet-background/index');
 
 // 游戏常量
 const TAP_DISTANCE_THRESHOLD = 16;
@@ -86,6 +87,7 @@ class HomePage {
     this._goalConsumeFx = [];
     /** 升级特效 */
     this._levelUpFx = null;
+    this._petBackground = new PetBackgroundSystem();
   }
 
   setGameSystems({ goalManager, wishManager, petStateManager, growth, onCompleteGoal, onUndoGoal, canUndoGoal, onCommitGoal, onCreateGoal }) {
@@ -311,6 +313,7 @@ class HomePage {
       if (!t.petMoved && dist < TAP_DISTANCE_THRESHOLD) {
         this.lulu.onTap();
         this._petGlowFrames = 34;
+        this._triggerBackgroundRipple();
         this.game.onLuluInteraction();
       }
     } else if (t.mode === 'commitment') {
@@ -321,6 +324,8 @@ class HomePage {
             this.rotateMotivationQuote();
             this._slotPulse = { index: t.commitIndex, ttl: 32, kind: 'done' };
             this._spawnGoalConsumeFx(t.commitIndex, t.commit, result.visualFx);
+            const completedGoal = result.goal || (t.commit ? t.commit.goal : null);
+            this._petBackground.onGoalCompleted(completedGoal, result.visualFx);
             this.game.onLuluInteraction();
           }
         } else if (t.commit && t.commit.completed && this._onUndoGoal) {
@@ -545,6 +550,7 @@ class HomePage {
     const luluName = this._getDuckName();
     const brandCopy = getBrandCopy(luluName, this._quoteIndex);
     this._updateGoalConsumeFx();
+    this._updateBackgroundFx(L, growth.level, mood, moodLabel);
 
     // 背景渐变
     const g = ctx.createLinearGradient(0, 0, 0, canvasHeight);
@@ -645,25 +651,7 @@ class HomePage {
     ctx.scale(this._petCardSquash, this._petCardSquash);
     ctx.translate(-pcx, -pcy);
 
-    const petCardGradient = ctx.createLinearGradient(0, L.petCardY, 0, L.petCardY + L.petCardH);
-    petCardGradient.addColorStop(0, 'rgba(255, 254, 250, 0.98)');
-    petCardGradient.addColorStop(1, 'rgba(255, 249, 240, 0.94)');
-    ctx.fillStyle = petCardGradient;
-    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, L.spec.petCardRadius);
-    ctx.fill();
-    const petGlow = ctx.createRadialGradient(
-      L.petCardX + L.petCardW / 2,
-      L.petCardY + L.petCardH * 0.62,
-      20,
-      L.petCardX + L.petCardW / 2,
-      L.petCardY + L.petCardH * 0.62,
-      L.petCardW * 0.58
-    );
-    petGlow.addColorStop(0, 'rgba(255, 214, 107, 0.24)');
-    petGlow.addColorStop(1, 'rgba(255, 214, 107, 0)');
-    ctx.fillStyle = petGlow;
-    canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, L.spec.petCardRadius);
-    ctx.fill();
+    this._drawPetBackground(ctx, L, growth.level);
     ctx.strokeStyle = UI.petCardBorder;
     ctx.lineWidth = 1.5;
     canvasRoundRect(ctx, L.petCardX, L.petCardY, L.petCardW, L.petCardH, L.spec.petCardRadius);
@@ -686,14 +674,6 @@ class HomePage {
     this._drawGoalConsumeFx(ctx, L);
     ctx.restore();
     this._hits.lulu = { x: L.petCardX, y: L.petCardY, w: L.petCardW, h: L.petCardH };
-
-    // 宠物与任务区之间的空隙提示（不压在立绘上）
-    const petActionGap = L.spec.petToActionGap != null ? L.spec.petToActionGap : 12;
-    ctx.fillStyle = UI.hint;
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'center';
-    const hintY = L.petCardY + L.petCardH + petActionGap * 0.5 + 4;
-    ctx.fillText(`轻点${luluName} · 和它打个招呼`, L.petCardX + L.petCardW / 2, hintY);
 
     // ===== 轻行动区 =====
     ctx.fillStyle = 'rgba(255, 255, 255, 0.76)';
@@ -989,26 +969,85 @@ class HomePage {
 
   _drawWishBubbles(ctx, L) {
     const wishes = this._wishManager.getTodayWishes();
-    const petCenter = { x: L.petCardX + L.petCardW / 2, y: L.petCardY + L.petCardH / 2 };
-    wishes.forEach((wish, i) => {
-      const angle = (i / Math.max(wishes.length, 1)) * Math.PI * 2 - Math.PI / 2;
-      const radius = 130;
-      const bx = petCenter.x + Math.cos(angle) * radius;
-      const by = petCenter.y + Math.sin(angle) * radius;
-      ctx.save();
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.shadowColor = 'rgba(0,0,0,0.08)';
-      ctx.shadowBlur = 8;
-      ctx.beginPath();
-      ctx.ellipse(bx, by, 70, 22, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.font = '11px sans-serif';
-      ctx.fillStyle = '#5D4E37';
-      ctx.textAlign = 'center';
-      ctx.fillText(wish.wishText.slice(0, 12), bx, by + 4);
-      ctx.restore();
-    });
+    if (!wishes || wishes.length === 0) return;
+    // 只显示一个主心愿，避免同屏多气泡造成“文案重复”
+    const primaryWish = wishes[0];
+    const text = String(primaryWish.wishText || '').trim();
+    if (!text) return;
+    const bx = L.petCardX + L.petCardW / 2;
+    const by = L.petCardY + 58;
+    const bubbleW = Math.min(280, L.petCardW * 0.82);
+    const bubbleH = 46;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.96)';
+    ctx.shadowColor = 'rgba(0,0,0,0.1)';
+    ctx.shadowBlur = 10;
+    canvasRoundRect(ctx, bx - bubbleW / 2, by - bubbleH / 2, bubbleW, bubbleH, 24);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(220, 212, 196, 0.75)';
+    ctx.lineWidth = 1;
+    canvasRoundRect(ctx, bx - bubbleW / 2, by - bubbleH / 2, bubbleW, bubbleH, 24);
+    ctx.stroke();
+    ctx.font = '600 17px sans-serif';
+    ctx.fillStyle = '#5D4E37';
+    ctx.textAlign = 'center';
+    ctx.fillText(text.slice(0, 14), bx, by + 6);
+    ctx.restore();
+  }
+
+  _triggerBackgroundRipple() {
+    this._petBackground.onPetTap();
+  }
+
+  _updateBackgroundFx(L, level, mood, moodLabel) {
+    this._bgContext = { level, moodValue: mood, moodLabel };
+  }
+
+  _drawPetBackground(ctx, L, level) {
+    const rect = { x: L.petCardX, y: L.petCardY, w: L.petCardW, h: L.petCardH };
+    const context = this._bgContext || { level, moodValue: 60, moodLabel: '平稳' };
+    this._petBackground.draw(ctx, rect, context);
+    if (this.lulu && typeof this.lulu.setPose === 'function') {
+      this.lulu.setPose(this._petBackground.getPose());
+    }
+  }
+
+  _drawDailyStatusStrip(ctx, L, growth) {
+    const level = growth && Number.isFinite(growth.level) ? growth.level : 1;
+    const warmth = Math.max(0, Math.min(1, (level - 1) / 15));
+    const bgBlue = 250 - Math.round(warmth * 18);
+    const borderBlue = 210 - Math.round(warmth * 22);
+    const stripH = 26;
+    const stripW = Math.min(L.petCardW, L.actionAreaW);
+    const stripX = (L.petCardX + L.petCardW / 2) - stripW / 2;
+    const gapTop = L.petCardY + L.petCardH;
+    const gapBottom = L.actionAreaY;
+    const minTopPadding = 6;
+    const minBottomPadding = 6;
+    const defaultY = gapTop + 10;
+    const maxY = gapBottom - stripH - minBottomPadding;
+    const minY = gapTop + minTopPadding;
+    const stripY = Math.max(minY, Math.min(defaultY, maxY));
+    const commitments = this._goalManager ? this._goalManager.getTodayCommitments() : [];
+    const doneCount = commitments.filter(c => c.completed).length;
+    const totalCount = commitments.length;
+    const remainingXp = Math.max(0, growth.getXpForNextLevel() - growth.xp);
+
+    ctx.fillStyle = `rgba(255, 255, ${bgBlue}, 0.82)`;
+    canvasRoundRect(ctx, stripX, stripY, stripW, stripH, 12);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 179, ${borderBlue}, 0.24)`;
+    ctx.lineWidth = 1;
+    canvasRoundRect(ctx, stripX, stripY, stripW, stripH, 12);
+    ctx.stroke();
+
+    const chunk = stripW / 2;
+    ctx.fillStyle = UI.textMuted;
+    ctx.font = '600 10.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`今日 ${doneCount}/${totalCount}`, stripX + chunk * 0.5, stripY + 17);
+    ctx.fillText(`距升级 ${remainingXp}XP`, stripX + chunk * 1.5, stripY + 17);
   }
 }
 
