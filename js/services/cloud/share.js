@@ -4,4 +4,11 @@ function resolveSceneToken(payload) {
   return callAction('resolveSceneToken', payload);
 }
 
-module.exports = { resolveSceneToken };
+function createShareToken(payload) {
+  return callAction('createShareToken', payload);
+}
+
+module.exports = {
+  resolveSceneToken,
+  createShareToken,
+};

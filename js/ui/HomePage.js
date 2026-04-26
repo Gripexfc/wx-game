@@ -6,6 +6,8 @@ const { canvasRoundRect } = require('../utils/canvas');
 const GoalPickerOverlay = require('./GoalPickerOverlay');
 const { getBrandCopy, HOME_MOTIVATION_QUOTES, getHomePageLayoutSpec, getHomePageCommitmentLayout } = require('./pageLayoutSpec');
 const { PetBackgroundSystem } = require('./pet-background/index');
+const GrowthPanel = require('./GrowthPanel');
+const SocialPulsePanel = require('./SocialPulsePanel');
 
 // 游戏常量
 const TAP_DISTANCE_THRESHOLD = 16;
@@ -56,6 +58,9 @@ class HomePage {
     this.game = game;
     this.lulu = null;
     this._hits = { lulu: null, tasks: [] };
+    this._hits.growthPanel = null;
+    this._hits.socialPanel = null;
+    this._hits.shareMoment = null;
     this._touch = { mode: null, lastX: 0, lastY: 0, startX: 0, startY: 0, petMoved: false, task: null };
     this._taskPress = null;
     /** 完成任务槽位短暂高亮 */
@@ -88,6 +93,20 @@ class HomePage {
     /** 升级特效 */
     this._levelUpFx = null;
     this._petBackground = new PetBackgroundSystem();
+    this._growthPanel = new GrowthPanel();
+    this._socialPulsePanel = new SocialPulsePanel();
+    this._overlay = {
+      visible: false,
+      title: '',
+      items: [],
+      allItems: [],
+      mode: '',
+      layout: null,
+      page: 0,
+      pageSize: 8,
+      busyItemId: '',
+    };
+    this._actionThrottle = {};
   }
 
   setGameSystems({ goalManager, wishManager, petStateManager, growth, onCompleteGoal, onUndoGoal, canUndoGoal, onCommitGoal, onCreateGoal }) {
@@ -252,6 +271,25 @@ class HomePage {
       return { zone: 'pet', layout: L };
     }
 
+    if (this._hits.growthPanel) {
+      const r = this._hits.growthPanel;
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+        return { zone: 'growth_panel', layout: L };
+      }
+    }
+    if (this._hits.socialPanel) {
+      const r = this._hits.socialPanel;
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+        return { zone: 'social_panel', layout: L };
+      }
+    }
+    if (this._hits.shareMoment) {
+      const r = this._hits.shareMoment;
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+        return { zone: 'share_moment', layout: L };
+      }
+    }
+
     // 承诺槽位检测
     if (L.commitmentSlots && L.commitmentSlots.length > 0) {
       for (let i = 0; i < L.commitmentSlots.length; i++) {
@@ -267,6 +305,10 @@ class HomePage {
   }
 
   onTouchStart(x, y, canvasWidth, canvasHeight) {
+    if (this._overlay.visible) {
+      this._handleOverlayTap(x, y);
+      return;
+    }
     if (this.goalPicker.visible) {
       this._handleGoalPickerAction(this.goalPicker.handleClick(x, y));
       return;
@@ -276,6 +318,12 @@ class HomePage {
 
     if (hit.zone === 'prefs_badge') {
       this._touch.mode = 'prefs_badge';
+    } else if (hit.zone === 'growth_panel') {
+      this._touch.mode = 'growth_panel';
+    } else if (hit.zone === 'social_panel') {
+      this._touch.mode = 'social_panel';
+    } else if (hit.zone === 'share_moment') {
+      this._touch.mode = 'share_moment';
     } else if (hit.zone === 'pet' && this.lulu) {
       this._touch.mode = 'pet';
       this._petCardSquash = PET_CARD_SQUASH_MIN;
@@ -307,6 +355,15 @@ class HomePage {
 
     if (t.mode === 'prefs_badge' && dist < 22) {
       this._openGamePrefsSheet();
+      this.game.onLuluInteraction();
+    } else if (t.mode === 'growth_panel' && dist < 22) {
+      this._openGrowthPanelSheet();
+      this.game.onLuluInteraction();
+    } else if (t.mode === 'social_panel' && dist < 22) {
+      this._openSocialPanelSheet();
+      this.game.onLuluInteraction();
+    } else if (t.mode === 'share_moment' && dist < 22) {
+      this._triggerShareMoment();
       this.game.onLuluInteraction();
     } else if (t.mode === 'pet' && this.lulu) {
       this.lulu.endPetDrag();
@@ -549,6 +606,9 @@ class HomePage {
     const moodLabel = this.lulu ? this.lulu.getMoodLabel() : '平稳';
     const luluName = this._getDuckName();
     const brandCopy = getBrandCopy(luluName, this._quoteIndex);
+    const homeSnapshot = this.game && typeof this.game.getHomeSnapshot === 'function'
+      ? this.game.getHomeSnapshot()
+      : null;
     this._updateGoalConsumeFx();
     this._updateBackgroundFx(L, growth.level, mood, moodLabel);
 
@@ -683,13 +743,7 @@ class HomePage {
     ctx.lineWidth = 1;
     canvasRoundRect(ctx, L.actionAreaX, L.actionAreaY, L.actionAreaW, L.actionAreaH, L.spec.actionAreaRadius);
     ctx.stroke();
-    ctx.fillStyle = UI.text;
-    ctx.font = '700 15px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('今天想一起完成什么', L.actionAreaX + L.spec.actionInset, L.actionAreaY + 24);
-    ctx.fillStyle = UI.textMuted;
-    ctx.font = '11px sans-serif';
-    ctx.fillText('先选一个小目标，剩下的慢慢来', L.actionAreaX + L.spec.actionInset, L.actionAreaY + 42);
+    this._drawDualPanels(ctx, L, homeSnapshot);
 
     this._commitmentSlots = L.commitmentSlots;
     const commitments = this._goalManager ? this._goalManager.getTodayCommitments() : [];
@@ -734,6 +788,551 @@ class HomePage {
     }
 
     this.goalPicker.render(ctx, canvasWidth, canvasHeight);
+    this._drawOverlay(ctx, canvasWidth, canvasHeight);
+  }
+
+  _drawDualPanels(ctx, L, homeSnapshot) {
+    const inset = L.spec.actionInset;
+    const gap = 8;
+    const panelY = L.actionAreaY + 8;
+    const panelH = Math.max(44, L.actionHeaderH - 12);
+    const panelW = (L.actionAreaW - inset * 2 - gap) / 2;
+    const leftRect = { x: L.actionAreaX + inset, y: panelY, w: panelW, h: panelH };
+    const rightRect = { x: leftRect.x + panelW + gap, y: panelY, w: panelW, h: panelH };
+
+    const growthData = homeSnapshot && homeSnapshot.growth ? homeSnapshot.growth : null;
+    const socialData = homeSnapshot && homeSnapshot.social ? homeSnapshot.social : null;
+    const inboxData = homeSnapshot && homeSnapshot.inbox ? homeSnapshot.inbox : null;
+
+    this._growthPanel.render(ctx, leftRect, growthData);
+    this._socialPulsePanel.render(ctx, rightRect, socialData, inboxData);
+    this._hits.growthPanel = leftRect;
+    this._hits.socialPanel = rightRect;
+    this._drawLatestMoment(ctx, L, homeSnapshot && homeSnapshot.latestMoment);
+  }
+
+  _openGrowthPanelSheet() {
+    const snapshot = this.game && typeof this.game.getHomeSnapshot === 'function'
+      ? this.game.getHomeSnapshot()
+      : null;
+    const growth = snapshot && snapshot.growth ? snapshot.growth : null;
+    const items = [
+      `等级 Lv.${growth ? growth.level : 1}`,
+      `今日完成 ${growth ? growth.completedCount : 0}/${growth ? growth.commitmentCount : 0}`,
+      `心情 ${growth ? growth.moodLabel : '平稳'} ${growth ? growth.moodValue : 60}%`,
+    ];
+    if (this.game && typeof this.game.trackUiEvent === 'function') {
+      this.game.trackUiEvent('open_growth_panel', {});
+    }
+    this._openOverlay('成长详情', items, 'growth');
+  }
+
+  _openSocialPanelSheet() {
+    const snapshot = this.game && typeof this.game.getHomeSnapshot === 'function'
+      ? this.game.getHomeSnapshot()
+      : null;
+    const lines = this._buildSocialOverlayItems(snapshot);
+    if (this.game && typeof this.game.markInboxAsRead === 'function') {
+      this.game.markInboxAsRead();
+    }
+    if (this.game && typeof this.game.trackUiEvent === 'function') {
+      this.game.trackUiEvent('open_social_panel', {
+        feedCount: social ? social.feedCount : 0,
+        unread: inbox ? inbox.unreadCount : 0,
+      });
+    }
+    this._openOverlay('好友脉冲', lines, 'social');
+  }
+
+  _openInboxOverlay() {
+    const snapshot = this.game && typeof this.game.getHomeSnapshot === 'function'
+      ? this.game.getHomeSnapshot()
+      : null;
+    const lines = this._buildInboxOverlayItems(snapshot);
+    if (this.game && typeof this.game.trackUiEvent === 'function') {
+      const inbox = snapshot && snapshot.inbox ? snapshot.inbox : null;
+      this.game.trackUiEvent('open_inbox_overlay', {
+        cheerCount: inbox && Array.isArray(inbox.cheerItems) ? inbox.cheerItems.length : 0,
+        visitCount: inbox && Array.isArray(inbox.visitItems) ? inbox.visitItems.length : 0,
+      });
+    }
+    this._openOverlay('收件箱', lines, 'inbox');
+  }
+
+  _buildSocialOverlayItems(snapshot) {
+    const social = snapshot && snapshot.social ? snapshot.social : null;
+    const inbox = snapshot && snapshot.inbox ? snapshot.inbox : null;
+    const feedItems = social && Array.isArray(social.feedItems) ? social.feedItems : [];
+    const base = [
+      `关注 ${social ? social.followingCount : 0} 人`,
+      `动态 ${social ? social.feedCount : 0} 条`,
+      `收件箱 ${inbox ? inbox.unreadCount : 0} 条`,
+    ];
+    const viewInbox = [{ label: '查看收件箱详情', action: 'open_inbox' }];
+    const dedupFeed = [];
+    const seenFeed = {};
+    for (let i = 0; i < feedItems.length; i += 1) {
+      const item = feedItems[i];
+      const key = `${item.hostOpenId || ''}:${item.summary || ''}`;
+      if (seenFeed[key]) continue;
+      seenFeed[key] = true;
+      dedupFeed.push(item);
+      if (dedupFeed.length >= 6) break;
+    }
+    const feedTop = dedupFeed.map((item) => ({
+      label: `${item.nickName}：${item.summary}`,
+      action: 'visit',
+      target: item,
+      id: item.id || '',
+      handled: item.id && this.game && typeof this.game.isInboxItemHandled === 'function'
+        ? this.game.isInboxItemHandled(item.id)
+        : false,
+    }));
+    const inboxItems = [];
+    if (inbox && Array.isArray(inbox.cheerItems) && inbox.cheerItems[0]) {
+      inboxItems.push(`加油：${inbox.cheerItems[0].nickName}`);
+    }
+    if (inbox && Array.isArray(inbox.visitItems) && inbox.visitItems[0]) {
+      inboxItems.push(`来访：${inbox.visitItems[0].nickName}`);
+    }
+    return base.concat(viewInbox).concat(feedTop).concat(inboxItems);
+  }
+
+  _buildInboxOverlayItems(snapshot) {
+    const inbox = snapshot && snapshot.inbox ? snapshot.inbox : null;
+    const cheer = inbox && Array.isArray(inbox.cheerItems) ? inbox.cheerItems : [];
+    const visit = inbox && Array.isArray(inbox.visitItems) ? inbox.visitItems : [];
+    const dedupCheer = [];
+    const seenCheer = {};
+    for (let i = 0; i < cheer.length; i += 1) {
+      const item = cheer[i];
+      const key = item.fromOpenId || item.id || `${item.nickName || ''}:${item.createdAt || ''}`;
+      if (seenCheer[key]) continue;
+      seenCheer[key] = true;
+      dedupCheer.push(item);
+      if (dedupCheer.length >= 4) break;
+    }
+    const dedupVisit = [];
+    const seenVisit = {};
+    for (let i = 0; i < visit.length; i += 1) {
+      const item = visit[i];
+      const key = item.visitorOpenId || item.id || `${item.nickName || ''}:${item.createdAt || ''}`;
+      if (seenVisit[key]) continue;
+      seenVisit[key] = true;
+      dedupVisit.push(item);
+      if (dedupVisit.length >= 4) break;
+    }
+    const lines = [
+      { label: '--- 收到加油 ---', kind: 'header' },
+    ]
+      .concat(dedupCheer.map((item) => ({
+        label: `${item.nickName} 给你加油了`,
+        action: 'cheer_back',
+        target: { hostOpenId: item.fromOpenId || '' },
+        id: item.id || '',
+        handled: item.id && this.game && typeof this.game.isInboxItemHandled === 'function'
+          ? this.game.isInboxItemHandled(item.id)
+          : false,
+      })))
+      .concat([{ label: '--- 来访记录 ---', kind: 'header' }])
+      .concat(dedupVisit.map((item) => ({
+        label: `${item.nickName} 来看你了`,
+        action: 'visit_back',
+        target: { hostOpenId: item.visitorOpenId || '' },
+        id: item.id || '',
+        handled: item.id && this.game && typeof this.game.isInboxItemHandled === 'function'
+          ? this.game.isInboxItemHandled(item.id)
+          : false,
+      })));
+    return lines;
+  }
+
+  _openOverlay(title, items, mode) {
+    this._overlay.visible = true;
+    this._overlay.title = title || '详情';
+    this._overlay.allItems = Array.isArray(items) ? this._sortOverlayItems(items, mode || 'default') : [];
+    this._overlay.mode = mode || 'default';
+    this._overlay.layout = null;
+    this._overlay.page = 0;
+    this._overlay.busyItemId = '';
+    this._syncOverlayPageItems();
+  }
+
+  _closeOverlay() {
+    this._overlay.visible = false;
+    this._overlay.items = [];
+    this._overlay.allItems = [];
+    this._overlay.layout = null;
+    this._overlay.page = 0;
+    this._overlay.busyItemId = '';
+  }
+
+  _syncOverlayPageItems() {
+    const pageSize = this._overlay.pageSize || 8;
+    const all = this._overlay.allItems || [];
+    const maxPage = Math.max(0, Math.ceil(all.length / pageSize) - 1);
+    this._overlay.page = Math.max(0, Math.min(this._overlay.page, maxPage));
+    const start = this._overlay.page * pageSize;
+    this._overlay.items = all.slice(start, start + pageSize);
+  }
+
+  _sortOverlayItems(items, mode) {
+    if (!Array.isArray(items)) return [];
+    if (mode !== 'social' && mode !== 'inbox') return items.slice(0);
+    const arr = items.slice(0);
+    arr.sort((a, b) => {
+      const aHeader = a && a.kind === 'header' ? 1 : 0;
+      const bHeader = b && b.kind === 'header' ? 1 : 0;
+      if (aHeader !== bHeader) return bHeader - aHeader;
+      const aHandled = a && a.handled ? 1 : 0;
+      const bHandled = b && b.handled ? 1 : 0;
+      if (aHandled !== bHandled) return aHandled - bHandled;
+      return 0;
+    });
+    return arr;
+  }
+
+  _handleOverlayTap(x, y) {
+    const layout = this._overlay.layout;
+    if (!layout) {
+      this._closeOverlay();
+      return;
+    }
+    const inPanel = x >= layout.panel.x && x <= layout.panel.x + layout.panel.w && y >= layout.panel.y && y <= layout.panel.y + layout.panel.h;
+    if (!inPanel) {
+      this._closeOverlay();
+      return;
+    }
+    if (x >= layout.close.x && x <= layout.close.x + layout.close.w && y >= layout.close.y && y <= layout.close.y + layout.close.h) {
+      this._closeOverlay();
+      return;
+    }
+    if (layout.prev && x >= layout.prev.x && x <= layout.prev.x + layout.prev.w && y >= layout.prev.y && y <= layout.prev.y + layout.prev.h) {
+      this._overlay.page -= 1;
+      this._syncOverlayPageItems();
+      return;
+    }
+    if (layout.next && x >= layout.next.x && x <= layout.next.x + layout.next.w && y >= layout.next.y && y <= layout.next.y + layout.next.h) {
+      this._overlay.page += 1;
+      this._syncOverlayPageItems();
+      return;
+    }
+    if (this._overlay.mode === 'social' && layout.items.length > 0) {
+      const hit = layout.items.find((item) => x >= item.x && x <= item.x + item.w && y >= item.y && y <= item.y + item.h);
+      if (!hit) return;
+      const source = this._overlay.items[hit.index];
+      if (source && source.action === 'open_inbox') {
+        this._openInboxOverlay();
+      } else if (source && source.action === 'visit') {
+        this._openSocialActionMenu(source.target, source);
+      } else if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({ title: '已记录回访入口', icon: 'none', duration: 1000 });
+      }
+    }
+    if (this._overlay.mode === 'inbox' && layout.items.length > 0) {
+      const hit = layout.items.find((item) => x >= item.x && x <= item.x + item.w && y >= item.y && y <= item.y + item.h);
+      if (!hit) return;
+      const source = this._overlay.items[hit.index];
+      if (!source || source.kind === 'header') return;
+      this._openSocialActionMenu(source.target, source);
+    }
+  }
+
+  _openSocialActionMenu(target, sourceItem) {
+    if (!target || !target.hostOpenId) {
+      if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({ title: '目标暂不可用', icon: 'none', duration: 1000 });
+      }
+      return;
+    }
+    if (sourceItem && sourceItem.handled) {
+      if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({ title: '该条已处理', icon: 'none', duration: 1000 });
+      }
+      return;
+    }
+    if (sourceItem && sourceItem.busy) return;
+    if (this._isActionThrottled(target, sourceItem && sourceItem.action)) {
+      if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({ title: '操作太快，稍后再试', icon: 'none', duration: 900 });
+      }
+      return;
+    }
+    if (typeof wx === 'undefined' || !wx.showActionSheet) {
+      this._triggerVisitAction(target, sourceItem);
+      return;
+    }
+    wx.showActionSheet({
+      itemList: ['发起来访互动', '给Ta加油'],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          if (this.game && typeof this.game.trackUiEvent === 'function') {
+            this.game.trackUiEvent('social_action_select', { action: 'visit' });
+          }
+          this._triggerVisitAction(target, sourceItem);
+        } else if (res.tapIndex === 1) {
+          if (this.game && typeof this.game.trackUiEvent === 'function') {
+            this.game.trackUiEvent('social_action_select', { action: 'cheer' });
+          }
+          this._triggerCheerAction(target, sourceItem);
+        }
+      },
+    });
+  }
+
+  _triggerVisitAction(target, sourceItem) {
+    if (!this.game || typeof this.game.triggerQuickVisit !== 'function') return;
+    this._setSourceBusy(sourceItem, true);
+    this.game.triggerQuickVisit(target).then((res) => {
+      if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({
+          title: res && res.success ? '已发起来访' : this._getActionErrorMessage(res, 'visit'),
+          icon: 'none',
+          duration: 1200,
+        });
+      }
+      if (res && res.success && sourceItem) {
+        this._markSourceHandled(sourceItem);
+      } else if (sourceItem) {
+        sourceItem.lastError = this._getActionErrorMessage(res, 'visit');
+      }
+      if (this.game && typeof this.game.trackUiEvent === 'function') {
+        this.game.trackUiEvent('social_action_result', { action: 'visit', success: Boolean(res && res.success), code: res && res.code });
+      }
+    }).finally(() => {
+      this._setSourceBusy(sourceItem, false);
+      this._refreshOverlayFromSnapshot();
+    });
+  }
+
+  _triggerCheerAction(target, sourceItem) {
+    if (!this.game || typeof this.game.triggerQuickCheer !== 'function') return;
+    this._setSourceBusy(sourceItem, true);
+    this.game.triggerQuickCheer(target).then((res) => {
+      if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({
+          title: res && res.success ? '已送出加油' : this._getActionErrorMessage(res, 'cheer'),
+          icon: 'none',
+          duration: 1200,
+        });
+      }
+      if (res && res.success && sourceItem) {
+        this._markSourceHandled(sourceItem);
+      } else if (sourceItem) {
+        sourceItem.lastError = this._getActionErrorMessage(res, 'cheer');
+      }
+      if (this.game && typeof this.game.trackUiEvent === 'function') {
+        this.game.trackUiEvent('social_action_result', { action: 'cheer', success: Boolean(res && res.success), code: res && res.code });
+      }
+    }).finally(() => {
+      this._setSourceBusy(sourceItem, false);
+      this._refreshOverlayFromSnapshot();
+    });
+  }
+
+  _setSourceBusy(sourceItem, busy) {
+    if (!sourceItem) return;
+    sourceItem.busy = Boolean(busy);
+    if (sourceItem.id) {
+      this._overlay.busyItemId = busy ? sourceItem.id : '';
+      for (let i = 0; i < this._overlay.allItems.length; i += 1) {
+        const item = this._overlay.allItems[i];
+        if (item && item.id === sourceItem.id) item.busy = Boolean(busy);
+      }
+      this._syncOverlayPageItems();
+    }
+  }
+
+  _isActionThrottled(target, action) {
+    const actionName = action || 'visit';
+    const hostId = target && target.hostOpenId ? target.hostOpenId : '';
+    if (!hostId) return false;
+    const key = `${actionName}:${hostId}`;
+    const now = Date.now();
+    const last = this._actionThrottle[key] || 0;
+    if (now - last < 1500) {
+      return true;
+    }
+    this._actionThrottle[key] = now;
+    return false;
+  }
+
+  _markSourceHandled(sourceItem) {
+    sourceItem.handled = true;
+    sourceItem.lastError = '';
+    if (sourceItem.id && this.game && typeof this.game.markInboxItemHandled === 'function') {
+      this.game.markInboxItemHandled(sourceItem.id);
+    }
+    if (sourceItem.id && Array.isArray(this._overlay.allItems)) {
+      for (let i = 0; i < this._overlay.allItems.length; i += 1) {
+        const item = this._overlay.allItems[i];
+        if (item && item.id === sourceItem.id) {
+          item.handled = true;
+        }
+      }
+      this._overlay.allItems = this._sortOverlayItems(this._overlay.allItems, this._overlay.mode);
+      this._syncOverlayPageItems();
+    }
+  }
+
+  _refreshOverlayFromSnapshot() {
+    if (!this._overlay.visible) return;
+    const snapshot = this.game && typeof this.game.getHomeSnapshot === 'function'
+      ? this.game.getHomeSnapshot()
+      : null;
+    let nextItems = null;
+    if (this._overlay.mode === 'social') {
+      nextItems = this._buildSocialOverlayItems(snapshot);
+    } else if (this._overlay.mode === 'inbox') {
+      nextItems = this._buildInboxOverlayItems(snapshot);
+    } else {
+      return;
+    }
+    if (Array.isArray(nextItems)) {
+      this._overlay.allItems = this._sortOverlayItems(nextItems, this._overlay.mode);
+      this._syncOverlayPageItems();
+    }
+  }
+
+  _getActionErrorMessage(res, actionType) {
+    const code = res && res.code ? String(res.code) : '';
+    if (code === 'RATE_LIMITED') return '操作太频繁，稍后再试';
+    if (code === 'NOT_FOLLOWING') return '先关注对方再加油';
+    if (code === 'NO_TARGET') return '目标暂不可用';
+    if (code === 'NETWORK_ERROR' || code === 'CALL_FAIL') return '网络波动，请稍后重试';
+    if (actionType === 'cheer') return '加油失败，请稍后重试';
+    return '来访暂不可用';
+  }
+
+  _drawOverlay(ctx, canvasWidth, canvasHeight) {
+    if (!this._overlay.visible) return;
+    const panelW = Math.min(320, canvasWidth - 40);
+    const panelH = Math.min(300, canvasHeight - 120);
+    const panelX = (canvasWidth - panelW) / 2;
+    const panelY = (canvasHeight - panelH) / 2;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(20, 20, 20, 0.35)';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+    canvasRoundRect(ctx, panelX, panelY, panelW, panelH, 14);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 179, 71, 0.28)';
+    ctx.lineWidth = 1;
+    canvasRoundRect(ctx, panelX, panelY, panelW, panelH, 14);
+    ctx.stroke();
+
+    ctx.fillStyle = '#5B4A3A';
+    ctx.font = '700 14px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(this._overlay.title, panelX + 14, panelY + 22);
+
+    const closeRect = { x: panelX + panelW - 42, y: panelY + 8, w: 32, h: 24 };
+    ctx.fillStyle = 'rgba(255, 179, 71, 0.2)';
+    canvasRoundRect(ctx, closeRect.x, closeRect.y, closeRect.w, closeRect.h, 8);
+    ctx.fill();
+    ctx.fillStyle = '#8B4500';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('关闭', closeRect.x + closeRect.w / 2, closeRect.y + 16);
+
+    const items = this._overlay.items || [];
+    const itemRects = [];
+    let y = panelY + 40;
+    const footerY = panelY + panelH - 30;
+    for (let i = 0; i < items.length; i += 1) {
+      if (y + 28 > footerY - 4) break;
+      const itemRect = { x: panelX + 12, y, w: panelW - 24, h: 24, index: i };
+      itemRects.push(itemRect);
+      const item = items[i];
+      const isHeader = item && typeof item === 'object' && item.kind === 'header';
+      const handled = item && typeof item === 'object' && item.handled;
+      const busy = item && typeof item === 'object' && item.busy;
+      const failed = item && typeof item === 'object' && item.lastError;
+      ctx.fillStyle = isHeader
+        ? 'rgba(255, 239, 209, 0.36)'
+        : this._overlay.mode === 'social'
+          ? (handled ? 'rgba(143, 214, 163, 0.1)' : (failed ? 'rgba(255, 155, 155, 0.18)' : 'rgba(143, 214, 163, 0.18)'))
+          : (handled ? 'rgba(255, 214, 107, 0.1)' : (failed ? 'rgba(255, 155, 155, 0.18)' : 'rgba(255, 214, 107, 0.16)'));
+      canvasRoundRect(ctx, itemRect.x, itemRect.y, itemRect.w, itemRect.h, 8);
+      ctx.fill();
+      ctx.fillStyle = '#5B4A3A';
+      ctx.font = isHeader ? '700 11px sans-serif' : '11px sans-serif';
+      ctx.textAlign = 'left';
+      const line = typeof item === 'object' && item && item.label ? item.label : String(item || '');
+      let finalLine = line;
+      if (handled) finalLine = `已处理 · ${line}`;
+      else if (busy) finalLine = `处理中 · ${line}`;
+      else if (failed) finalLine = `失败可重试 · ${line}`;
+      const text = finalLine.length > 30 ? `${finalLine.slice(0, 30)}…` : finalLine;
+      ctx.fillText(text, itemRect.x + 8, itemRect.y + 16);
+      y += 30;
+    }
+    const pageSize = this._overlay.pageSize || 8;
+    const totalPages = Math.max(1, Math.ceil((this._overlay.allItems || []).length / pageSize));
+    const currentPage = (this._overlay.page || 0) + 1;
+    const prevRect = { x: panelX + 12, y: footerY, w: 64, h: 20 };
+    const nextRect = { x: panelX + panelW - 76, y: footerY, w: 64, h: 20 };
+    ctx.fillStyle = 'rgba(255, 214, 107, 0.2)';
+    canvasRoundRect(ctx, prevRect.x, prevRect.y, prevRect.w, prevRect.h, 8);
+    ctx.fill();
+    canvasRoundRect(ctx, nextRect.x, nextRect.y, nextRect.w, nextRect.h, 8);
+    ctx.fill();
+    ctx.fillStyle = '#8B4500';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('上一页', prevRect.x + prevRect.w / 2, prevRect.y + 13);
+    ctx.fillText('下一页', nextRect.x + nextRect.w / 2, nextRect.y + 13);
+    ctx.fillText(`${currentPage}/${totalPages}`, panelX + panelW / 2, footerY + 13);
+    ctx.restore();
+
+    this._overlay.layout = {
+      panel: { x: panelX, y: panelY, w: panelW, h: panelH },
+      close: closeRect,
+      items: itemRects,
+      prev: prevRect,
+      next: nextRect,
+    };
+  }
+
+  _drawLatestMoment(ctx, L, moment) {
+    this._hits.shareMoment = null;
+    if (!moment || !moment.summary) return;
+    const text = String(moment.summary);
+    const short = text.length > 22 ? `${text.slice(0, 22)}…` : text;
+    const x = L.actionAreaX + L.spec.actionInset;
+    const y = L.actionAreaY + L.actionHeaderH + 2;
+    ctx.save();
+    ctx.fillStyle = UI.textMuted;
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(short, x, y);
+    const btnW = 46;
+    const btnH = 16;
+    const btnX = L.actionAreaX + L.actionAreaW - L.spec.actionInset - btnW;
+    const btnY = y - 11;
+    ctx.fillStyle = 'rgba(143,214,163,0.22)';
+    canvasRoundRect(ctx, btnX, btnY, btnW, btnH, 8);
+    ctx.fill();
+    ctx.fillStyle = '#5B4A3A';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('分享', btnX + btnW / 2, btnY + 11);
+    this._hits.shareMoment = { x: btnX, y: btnY, w: btnW, h: btnH };
+    ctx.restore();
+  }
+
+  _triggerShareMoment() {
+    if (!this.game || typeof this.game.triggerShareFromMoment !== 'function') return;
+    this.game.triggerShareFromMoment().then((res) => {
+      if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({
+          title: res && res.success ? '已打开分享' : '分享暂不可用',
+          icon: 'none',
+          duration: 1200,
+        });
+      }
+    });
   }
 
   _spawnGoalConsumeFx(slotIndex, commit, visualFx) {

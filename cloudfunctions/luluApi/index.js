@@ -64,6 +64,8 @@ exports.main = async (event) => {
         return await handleGetHostPublicPage(OPENID, payload);
       case 'resolveSceneToken':
         return await handleResolveSceneToken(OPENID, payload);
+      case 'createShareToken':
+        return await handleCreateShareToken(OPENID, payload);
       case 'recordVisitInteraction':
         return await handleRecordVisit(OPENID, payload);
       case 'sendCheer':
@@ -84,7 +86,7 @@ exports.main = async (event) => {
 async function handleUpsertUserProfile(OPENID, payload) {
   if (!OPENID) return fail('UNAUTH', '需要登录');
   const {
-    nickName, avatarUrl, petVariantId, petName, petTeaseEnabled,
+    nickName, avatarUrl, petVariantId, petName, petTeaseEnabled, level, todayDoneCount, streakDays,
   } = payload;
   const doc = {
     openId: OPENID,
@@ -95,6 +97,9 @@ async function handleUpsertUserProfile(OPENID, payload) {
   if (petVariantId != null) doc.petVariantId = Math.max(0, Math.min(3, Number(petVariantId) || 0));
   if (petName != null) doc.petName = String(petName).slice(0, 16);
   if (typeof petTeaseEnabled === 'boolean') doc.petTeaseEnabled = petTeaseEnabled;
+  if (level != null) doc.level = Math.max(1, Number(level) || 1);
+  if (todayDoneCount != null) doc.todayDoneCount = Math.max(0, Number(todayDoneCount) || 0);
+  if (streakDays != null) doc.streakDays = Math.max(0, Number(streakDays) || 0);
 
   await db.collection(USERS).doc(OPENID).set({ data: doc });
   return ok({ saved: true });
@@ -191,10 +196,16 @@ async function handleGetFriendFeed(OPENID, payload) {
       .count();
     items.push({
       followeeOpenId: id,
+      openId: id,
+      hostOpenId: id,
       displayName: ud.petName || ud.nickName || '用户',
+      nickName: ud.nickName || '',
+      petName: ud.petName || '',
+      summary: `今日完成 ${ud.todayDoneCount != null ? ud.todayDoneCount : 0}，连续 ${ud.streakDays != null ? ud.streakDays : 0} 天`,
       avatarUrl: ud.avatarUrl || '',
       petVariantId: ud.petVariantId != null ? ud.petVariantId : 0,
       cheerGivenToday: cheered.total > 0,
+      updatedAt: ud.updatedAt || Date.now(),
     });
   }
   return ok({ items, nextCursor: null, hasMore: false });
@@ -252,6 +263,27 @@ async function handleResolveSceneToken(OPENID, payload) {
     return ok({ hostOpenId: users.data[0]._id || users.data[0].openId });
   }
   return fail('INVALID_OR_EXPIRED_TOKEN', '无效 token');
+}
+
+async function handleCreateShareToken(OPENID, payload) {
+  if (!OPENID) return fail('UNAUTH', '需要登录');
+  const ttlDays = Math.max(1, Math.min(30, Number(payload.ttlDays) || 7));
+  const token = `${OPENID.slice(0, 6)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const expiresAt = Date.now() + ttlDays * 24 * 60 * 60 * 1000;
+  await db.collection(SHARE_LINKS).add({
+    data: {
+      token,
+      hostOpenId: OPENID,
+      revoked: false,
+      expiresAt,
+      createdAt: Date.now(),
+    },
+  });
+  return ok({
+    token,
+    expiresAt,
+    shareQuery: `token=${encodeURIComponent(token)}`,
+  });
 }
 
 function pickCategory({ teaseEnabled, isFirstVisit }) {

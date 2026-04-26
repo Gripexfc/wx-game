@@ -10,6 +10,14 @@ if (typeof wx !== 'undefined' && wx.cloud) {
 
 const { STORAGE_KEYS: GLOBAL_STORAGE } = require('../utils/constants');
 const { upsertUserProfile } = require('./services/cloud/user');
+const { recordVisitInteraction } = require('./services/cloud/visit');
+const { sendCheer } = require('./services/cloud/cheer');
+const { createShareToken, resolveSceneToken } = require('./services/cloud/share');
+const { followUser } = require('./services/cloud/social');
+const { buildGrowthSnapshot } = require('./services/growthService');
+const { buildSocialSnapshot, fetchSocialSnapshot } = require('./services/socialService');
+const { createCompletionMoment } = require('./services/momentService');
+const { buildInboxSnapshot, fetchInboxSnapshot } = require('./services/inboxService');
 
 const DESIGN_W = 375;
 const DESIGN_H = 667;
@@ -44,6 +52,10 @@ const MAJOR_EVOLUTION_LEVELS = [6, 11, 16];
 /** 可选「暴击」经验：每日触发上限（自然日，与 goal 同日历） */
 const GOAL_CRIT_DAILY_CAP = 3;
 const GOAL_CRIT_CHANCE = 0.12;
+const HOME_SNAPSHOT_SYNC_INTERVAL = 15000;
+const HOME_INBOX_LAST_READ_AT_KEY = 'home_inbox_last_read_at';
+const HOME_HANDLED_ITEMS_KEY = 'home_inbox_handled_items';
+const HOME_UI_EVENTS_KEY = 'home_ui_events_log';
 
 function normalizeGamePrefs(raw) {
   const p = raw && typeof raw === 'object' ? { ...raw } : {};
@@ -95,6 +107,14 @@ class Game {
     this._lastOnlineXPTime = Date.now();
     this._goalUndoState = Object.create(null);
     this.gamePrefs = normalizeGamePrefs(null);
+    this._latestMoment = null;
+    this._homeSnapshot = null;
+    this._homeSnapshotSyncing = false;
+    this._lastHomeSnapshotSyncAt = 0;
+    this._inboxLastReadAt = 0;
+    this._handledInboxItems = {};
+    this._uiEventLogs = [];
+    this._pendingShareContext = null;
 
     this.loadData();
     this.homePage.setLulu(this.lulu);
@@ -109,6 +129,9 @@ class Game {
       onCommitGoal: (goalId) => { /* 承诺目标 */ },
       onCreateGoal: (goal) => { /* 创建目标 */ },
     });
+    this._refreshHomeSnapshot();
+    this._syncHomeCloudSnapshot();
+    this._handleLaunchShareToken();
 
     const BannerAdManager = require('./ads/BannerAdManager');
     BannerAdManager.getInstance().init('YOUR_BANNER_AD_UNIT_ID');
@@ -201,6 +224,7 @@ class Game {
   onNameSet(name) {
     this.currentPage = 'home';
     this.homePage.setLulu(this.lulu);
+    this._refreshHomeSnapshot();
   }
 
   /** 首启完成时尝试同步用户资料到云（失败忽略，本地已保存） */
@@ -221,6 +245,7 @@ class Game {
         this.wishManager.generateDailyWishes(this.goalManager.getGoals());
       }
       this.saveData();
+      this._emitHomeEvent('GOAL_CREATED', { goal });
       return goal;
     } catch (error) {
       if (typeof wx !== 'undefined' && wx.showToast) {
@@ -242,9 +267,13 @@ class Game {
 
   loadData() {
     const name = this.storage.get(STORAGE_KEYS_LULU.LULU_NAME);
+    this._inboxLastReadAt = Number(this.storage.get(HOME_INBOX_LAST_READ_AT_KEY)) || 0;
+    this._handledInboxItems = this.storage.get(HOME_HANDLED_ITEMS_KEY) || {};
+    this._uiEventLogs = this.storage.get(HOME_UI_EVENTS_KEY) || [];
     if (!name || !String(name).trim()) {
       this.currentPage = 'onboarding';
       this.onboardingPage.setLulu(this.lulu);
+      this._refreshHomeSnapshot();
       return;
     }
 
@@ -333,6 +362,7 @@ class Game {
     if (this.goalManager.getGoals().length > 0 && this.wishManager.getTodayWishes().length === 0) {
       this.wishManager.generateDailyWishes(this.goalManager.getGoals());
     }
+    this._refreshHomeSnapshot();
   }
 
   saveData() {
@@ -352,6 +382,246 @@ class Game {
     this.storage.set('wish_data', this.wishManager.serialize());
     this.storage.set('pet_state_data', this.petStateManager.serialize());
     this.storage.set('game_prefs', this.gamePrefs);
+    this.storage.set(HOME_INBOX_LAST_READ_AT_KEY, this._inboxLastReadAt || 0);
+    this.storage.set(HOME_HANDLED_ITEMS_KEY, this._handledInboxItems || {});
+    this.storage.set(HOME_UI_EVENTS_KEY, this._uiEventLogs || []);
+  }
+
+  _refreshHomeSnapshot() {
+    const previous = this._homeSnapshot || {};
+    this._homeSnapshot = {
+      growth: buildGrowthSnapshot(this),
+      social: previous.social || buildSocialSnapshot(this),
+      inbox: previous.inbox || buildInboxSnapshot(null),
+      latestMoment: this._latestMoment,
+    };
+  }
+
+  _syncGrowthProgressToCloud() {
+    const streakDays = this.goalManager && typeof this.goalManager.getStreakDays === 'function'
+      ? this.goalManager.getStreakDays()
+      : 0;
+    const todayDoneCount = this.goalManager && typeof this.goalManager.getTodayCompletedCount === 'function'
+      ? this.goalManager.getTodayCompletedCount()
+      : 0;
+    upsertUserProfile({
+      level: this.growth ? this.growth.level : 1,
+      todayDoneCount,
+      streakDays,
+    }).catch(() => {});
+  }
+
+  _emitHomeEvent(type, payload) {
+    if (type === 'TASK_COMPLETED') {
+      const goal = payload && payload.goal;
+      const visualFx = payload && payload.visualFx;
+      this._latestMoment = createCompletionMoment(goal, visualFx);
+    }
+    if (type === 'TASK_UNDONE') {
+      this._latestMoment = null;
+    }
+    if (type === 'TASK_COMPLETED') {
+      this._prepareShareContext(payload && payload.goal);
+    }
+    this._refreshHomeSnapshot();
+    this._syncHomeCloudSnapshot();
+  }
+
+  getHomeSnapshot() {
+    if (!this._homeSnapshot) this._refreshHomeSnapshot();
+    return this._homeSnapshot;
+  }
+
+  async triggerQuickVisit(target) {
+    if (!target || !target.hostOpenId) {
+      return { success: false, code: 'NO_TARGET' };
+    }
+    const res = await this._runWithRetry(() => recordVisitInteraction({
+      hostOpenId: target.hostOpenId,
+      entrySource: 'home_social_pulse',
+    }), 1);
+    await this._syncHomeCloudSnapshot();
+    return res;
+  }
+
+  async triggerQuickCheer(target) {
+    if (!target || !target.hostOpenId) {
+      return { success: false, code: 'NO_TARGET' };
+    }
+    const res = await this._runWithRetry(() => sendCheer({
+      toOpenId: target.hostOpenId,
+      source: 'home_social_pulse',
+    }), 1);
+    await this._syncHomeCloudSnapshot();
+    return res;
+  }
+
+  async triggerShareFromMoment() {
+    if (!this._pendingShareContext) {
+      return { success: false, code: 'NO_MOMENT' };
+    }
+    const tokenRes = await createShareToken({ ttlDays: 7 });
+    if (!tokenRes || !tokenRes.success) return tokenRes || { success: false, code: 'SHARE_TOKEN_FAIL' };
+    const token = tokenRes.data && tokenRes.data.token;
+    const title = this._pendingShareContext.title || '我今天完成了一个目标';
+    const imageUrl = '';
+    const query = token ? `token=${encodeURIComponent(token)}` : '';
+    if (typeof wx !== 'undefined' && typeof wx.shareAppMessage === 'function') {
+      try {
+        wx.shareAppMessage({
+          title,
+          query,
+          imageUrl,
+        });
+      } catch (e) {
+        return { success: false, code: 'SHARE_CALL_FAIL', message: String(e && e.message ? e.message : e) };
+      }
+    } else {
+      return { success: false, code: 'SHARE_UNAVAILABLE' };
+    }
+    this.trackUiEvent('share_triggered', { token: Boolean(token), title });
+    return { success: true, token };
+  }
+
+  _prepareShareContext(goal) {
+    this._pendingShareContext = {
+      goalName: goal && goal.name ? goal.name : '今日目标',
+      title: `我刚完成「${goal && goal.name ? goal.name : '今日目标'}」，一起坚持吗？`,
+      at: Date.now(),
+    };
+  }
+
+  async _handleLaunchShareToken() {
+    if (typeof wx === 'undefined' || typeof wx.getLaunchOptionsSync !== 'function') return;
+    let launch = null;
+    try {
+      launch = wx.getLaunchOptionsSync();
+    } catch (e) {
+      return;
+    }
+    const token = launch && launch.query && launch.query.token;
+    if (!token) return;
+    const resolved = await resolveSceneToken({ token });
+    if (!resolved || !resolved.success || !resolved.data || !resolved.data.hostOpenId) {
+      if (wx.showToast) wx.showToast({ title: '分享链接已失效', icon: 'none', duration: 1200 });
+      return;
+    }
+    const hostOpenId = resolved.data.hostOpenId;
+    if (wx.showModal) {
+      wx.showModal({
+        title: '来自好友的邀请',
+        content: '要不要先关注对方，加入一起坚持？',
+        confirmText: '立即关注',
+        cancelText: '稍后再说',
+        success: async (res) => {
+          if (!res.confirm) return;
+          const f = await followUser({ followeeOpenId: hostOpenId });
+          if (wx.showToast) {
+            wx.showToast({ title: f && f.success ? '已关注' : '关注失败', icon: 'none', duration: 1200 });
+          }
+          this._syncHomeCloudSnapshot();
+        },
+      });
+    }
+  }
+
+  markInboxAsRead() {
+    if (!this._homeSnapshot || !this._homeSnapshot.inbox) return;
+    this._inboxLastReadAt = Date.now();
+    this.saveData();
+    this._homeSnapshot = {
+      ...this._homeSnapshot,
+      inbox: {
+        ...this._homeSnapshot.inbox,
+        unreadCount: 0,
+      },
+    };
+  }
+
+  markInboxItemHandled(itemId) {
+    if (!itemId) return;
+    this._handledInboxItems[itemId] = Date.now();
+    this.saveData();
+  }
+
+  trackUiEvent(eventName, payload) {
+    const name = String(eventName || '').trim();
+    if (!name) return;
+    const entry = {
+      event: name,
+      at: Date.now(),
+      payload: payload && typeof payload === 'object' ? payload : {},
+    };
+    this._uiEventLogs.push(entry);
+    if (this._uiEventLogs.length > 200) {
+      this._uiEventLogs = this._uiEventLogs.slice(-200);
+    }
+    this.saveData();
+  }
+
+  isInboxItemHandled(itemId) {
+    if (!itemId) return false;
+    return Boolean(this._handledInboxItems && this._handledInboxItems[itemId]);
+  }
+
+  async _syncHomeCloudSnapshot() {
+    if (this._homeSnapshotSyncing) return;
+    this._homeSnapshotSyncing = true;
+    try {
+      const [social, inbox] = await Promise.all([
+        fetchSocialSnapshot(),
+        fetchInboxSnapshot(),
+      ]);
+      if (!this._homeSnapshot) this._refreshHomeSnapshot();
+      this._homeSnapshot = {
+        growth: this._homeSnapshot.growth,
+        social: social || buildSocialSnapshot(this),
+        inbox: {
+          ...(inbox || buildInboxSnapshot(null)),
+          unreadCount: this._calcInboxUnreadCount(inbox || buildInboxSnapshot(null)),
+        },
+        latestMoment: this._latestMoment,
+      };
+      this._lastHomeSnapshotSyncAt = Date.now();
+    } catch (e) {
+      // Ignore cloud sync failures and keep local snapshot.
+    } finally {
+      this._homeSnapshotSyncing = false;
+    }
+  }
+
+  async refreshHomeCloudSnapshot() {
+    return this._syncHomeCloudSnapshot();
+  }
+
+  _calcInboxUnreadCount(inbox) {
+    const data = inbox || {};
+    const all = []
+      .concat(Array.isArray(data.cheerItems) ? data.cheerItems : [])
+      .concat(Array.isArray(data.visitItems) ? data.visitItems : [])
+      .concat(Array.isArray(data.pendingItems) ? data.pendingItems : []);
+    return all.filter((item) => {
+      const id = item && item.id;
+      if (id && this.isInboxItemHandled(id)) return false;
+      return Number(item && item.createdAt) > (this._inboxLastReadAt || 0);
+    }).length;
+  }
+
+  async _runWithRetry(taskFn, retries) {
+    let count = 0;
+    let lastRes = null;
+    while (count <= retries) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const res = await taskFn();
+        if (res && res.success) return res;
+        lastRes = res;
+      } catch (e) {
+        lastRes = { success: false, code: 'NETWORK_ERROR', message: String(e && e.message ? e.message : e) };
+      }
+      count += 1;
+    }
+    return lastRes || { success: false, code: 'UNKNOWN' };
   }
 
   getMotionTier() {
@@ -471,6 +741,20 @@ class Game {
       addedLoveStar: Boolean(wishReward && wishReward.loveStar),
       critApplied,
     };
+    this._emitHomeEvent('TASK_COMPLETED', {
+      goal,
+      visualFx: {
+        goalId,
+        xp,
+        moodBoost,
+        leveledUp,
+        majorEvolution,
+        level: this.growth.level,
+        crit: critApplied,
+        critBonus,
+      },
+    });
+    this._syncGrowthProgressToCloud();
     return {
       success: true,
       goal,
@@ -528,6 +812,8 @@ class Game {
     }
     delete this._goalUndoState[goalId];
     this.saveData();
+    this._emitHomeEvent('TASK_UNDONE', { goalId });
+    this._syncGrowthProgressToCloud();
     return { success: true, goalId };
   }
 
@@ -572,6 +858,10 @@ class Game {
           wx.showToast({ title: `${this.getLuluName()}陪你涨了 +${this._onlineXP} XP`, icon: 'none', duration: 1500 });
         }
       }
+      this._refreshHomeSnapshot();
+    }
+    if (now - this._lastHomeSnapshotSyncAt >= HOME_SNAPSHOT_SYNC_INTERVAL) {
+      this._syncHomeCloudSnapshot();
     }
   }
 

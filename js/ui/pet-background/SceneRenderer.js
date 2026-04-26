@@ -1,5 +1,25 @@
 function roundRectPath(ctx, x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, Math.min(w, h) * 0.5));
+  if (typeof ctx.quadraticCurveTo !== 'function') {
+    ctx.beginPath();
+    if (typeof ctx.arcTo === 'function') {
+      ctx.moveTo(x + rr, y);
+      ctx.lineTo(x + w - rr, y);
+      ctx.arcTo(x + w, y, x + w, y + rr, rr);
+      ctx.lineTo(x + w, y + h - rr);
+      ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+      ctx.lineTo(x + rr, y + h);
+      ctx.arcTo(x, y + h, x, y + h - rr, rr);
+      ctx.lineTo(x, y + rr);
+      ctx.arcTo(x, y, x + rr, y, rr);
+      ctx.closePath();
+      return;
+    }
+    if (typeof ctx.rect === 'function') {
+      ctx.rect(x, y, w, h);
+      return;
+    }
+  }
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
   ctx.lineTo(x + w - rr, y);
